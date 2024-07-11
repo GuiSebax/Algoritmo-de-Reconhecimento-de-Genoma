@@ -29,6 +29,8 @@ typedef struct {
 typedef struct {
     int thread_id;
     int num_alignments;
+    int* alinhaMaior;
+    int* alinhaMenor;
 } AlignmentThreadData;
 
 void mostraAlinhamentoGlobal(void);
@@ -351,18 +353,35 @@ void *traceBackThread(void *arg) {
         colScore = matrizScores[tbLin-1][tbCol] - penalGap;
 
         if ((diagScore >= linScore) && (diagScore >= colScore)) {
-            alinhaMenor[pos] = seqMenor[tbLin-1];
-            alinhaMaior[pos] = seqMaior[tbCol-1];
+            AlignmentThreadData->alinhaMenor[pos] = seqMenor[tbLin-1];
+            AlignmentThreadData->alinhaMaior[pos] = seqMaior[tbCol-1];
             tbLin--;
             tbCol--;
+            if(diagScore == linScore) {
+                LinAlignmentThreadData *data = (LinAlignmentThreadData *)arg;
+                LinAlignmentThreadData->thread_id++;
+                LinAlignmentThreadData->alinhaMenor[pos] = (char)4;
+                LinAlignmentThreadData->alinhaMaior[pos] = seqMaior[tbCol-1];
+                tbCol--;
+                pthread_create(&thread, NULL, traceBackThread, (void*) LinAlignmentThreadData)
+                }
+            if(diagScore == colScore) {
+                ColAlignmentThreadData *data = (ColAlignmentThreadData *)arg;
+                ColAlignmentThreadData->thread_id++;
+                ColAlignmentThreadData->alinhaMenor[pos] = seqMenor[tbLin-1];
+                ColAlignmentThreadData->alinhaMaior[pos] = (char)4;
+                tbLin--;
+                    pthread_create(&thread, NULL, traceBackThread, (void*) ColAlignmentThreadData)
+                }
         } else if (linScore > colScore) {
-            alinhaMenor[pos] = (char)4;
-            alinhaMaior[pos] = seqMaior[tbCol-1];
+            AlignmentThreadData->alinhaMenor[pos] = (char)4;
+            AlignmentThreadData->alinhaMaior[pos] = seqMaior[tbCol-1];
             tbCol--;
         } else {
-            alinhaMenor[pos] = seqMenor[tbLin-1];
-            alinhaMaior[pos] = (char)4;
+            AlignmentThreadData->alinhaMenor[pos] = seqMenor[tbLin-1];
+            AlignmentThreadData->alinhaMaior[pos] = (char)4;
             tbLin--;
+        }
         }
         pos++;
     }
