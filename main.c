@@ -353,33 +353,33 @@ void *traceBackThread(void *arg) {
         colScore = matrizScores[tbLin-1][tbCol] - penalGap;
 
         if ((diagScore >= linScore) && (diagScore >= colScore)) {
-            AlignmentThreadData->alinhaMenor[pos] = seqMenor[tbLin-1];
-            AlignmentThreadData->alinhaMaior[pos] = seqMaior[tbCol-1];
+            data->alinhaMenor[pos] = seqMenor[tbLin-1];
+            data->alinhaMaior[pos] = seqMaior[tbCol-1];
             tbLin--;
             tbCol--;
             if(diagScore == linScore) {
-                LinAlignmentThreadData *data = (LinAlignmentThreadData *)arg;
-                LinAlignmentThreadData->thread_id++;
-                LinAlignmentThreadData->alinhaMenor[pos] = (char)4;
-                LinAlignmentThreadData->alinhaMaior[pos] = seqMaior[tbCol-1];
+                AlignmentThreadData *dataLin = (AlignmentThreadData *)arg;
+                dataLin->thread_id++;
+                dataLin->alinhaMenor[pos] = (char)4;
+                dataLin->alinhaMaior[pos] = seqMaior[tbCol-1];
                 tbCol--;
-                pthread_create(&thread, NULL, traceBackThread, (void*) LinAlignmentThreadData)
+                pthread_create(&thread, NULL, traceBackThread, (void*) dataLin)
                 }
             if(diagScore == colScore) {
-                ColAlignmentThreadData *data = (ColAlignmentThreadData *)arg;
-                ColAlignmentThreadData->thread_id++;
-                ColAlignmentThreadData->alinhaMenor[pos] = seqMenor[tbLin-1];
-                ColAlignmentThreadData->alinhaMaior[pos] = (char)4;
+                AlignmentThreadData *dataCol = (AlignmentThreadData *)arg;
+                dataCol->thread_id++;
+                dataCol->alinhaMenor[pos] = seqMenor[tbLin-1];
+                dataCol->alinhaMaior[pos] = (char)4;
                 tbLin--;
-                    pthread_create(&thread, NULL, traceBackThread, (void*) ColAlignmentThreadData)
+                    pthread_create(&thread, NULL, traceBackThread, (void*) dataCol)
                 }
         } else if (linScore > colScore) {
-            AlignmentThreadData->alinhaMenor[pos] = (char)4;
-            AlignmentThreadData->alinhaMaior[pos] = seqMaior[tbCol-1];
+            data->alinhaMenor[pos] = (char)4;
+            data->alinhaMaior[pos] = seqMaior[tbCol-1];
             tbCol--;
         } else {
-            AlignmentThreadData->alinhaMenor[pos] = seqMenor[tbLin-1];
-            AlignmentThreadData->alinhaMaior[pos] = (char)4;
+            data->alinhaMenor[pos] = seqMenor[tbLin-1];
+            data->alinhaMaior[pos] = (char)4;
             tbLin--;
         }
         }
