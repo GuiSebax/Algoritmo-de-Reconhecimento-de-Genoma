@@ -4,7 +4,7 @@
 #include <time.h>
 #include <pthread.h>
 
-#define A 0
+#define A 0 // A
 #define T 1
 #define G 2
 #define C 3
