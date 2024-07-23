@@ -72,6 +72,7 @@ int leTamMaior(void)
         printf("\nDigite 0 < valor < %d = ", maxSeq);
         scanf("%d", &tamSeqMaior);
     } while ((tamSeqMaior < 1) || (tamSeqMaior > maxSeq));
+    return tamSeqMaior;
 }
 
 int leTamMenor(void)
@@ -82,6 +83,7 @@ int leTamMenor(void)
         printf("\nDigite 0 < valor <= %d = ", tamSeqMaior);
         scanf("%d", &tamSeqMenor);
     } while ((tamSeqMenor < 1) || (tamSeqMenor > tamSeqMaior));
+    return tamSeqMenor;
 }
 
 int lePenalidade(void)
@@ -711,13 +713,12 @@ int menuOpcao(void)
         printf("\n<09> Salvar Matriz de Scores");
         printf("\n<10> Gerar Alinhamento Global");
         printf("\n<11> Mostrar Alinhamento Global");
-        printf("\n<12> Definir Numero de Alinhamentos a Mostrar");
-        printf("\n<13> Definir Numero de Threads");
-        printf("\n<14> Sair");
+        printf("\n<12> Definir Numero de Threads");
+        printf("\n<13> Sair");
         printf("\nDigite a opcao => ");
         scanf("%d", &op);
         scanf("%c", &enter);
-    } while ((op < 1) || (op > 14));
+    } while ((op < 1) || (op > 13));
 
     return (op);
 }
@@ -781,12 +782,9 @@ void trataOpcao(int op)
         mostraAlinhamentoGlobal();
         break;
     case 12:
-        k = leNumeroDeAlinhamentos();
-        break;
-    case 13:
         numThreads = leNumeroDeThreads();
         break;
-    case 14:
+    case 13:
         exit(0);
     }
 }
