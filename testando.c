@@ -171,6 +171,48 @@ void leSequenciasDeArquivo()
     tamSeqMaior = fread(seqMaior, sizeof(char), maxSeq, fileMaior);
     tamSeqMenor = fread(seqMenor, sizeof(char), maxSeq, fileMenor);
 
+    for (int i = 0; i < tamSeqMaior; i++)
+    {
+        if (seqMaior[i] == 'A')
+        {
+            seqMaior[i] = 0;
+        }else if (seqMaior[i] == 'T')
+        {
+            seqMaior[i] = 1;
+        }else if (seqMaior[i] == 'G')
+        {
+            seqMaior[i] = 2;
+        }else if (seqMaior[i] == 'C'){
+            seqMaior[i] = 3;
+
+        }else 
+        {
+            printf("Sequencia lida invalida, terminando o programa.");
+            exit(1);
+        }
+    }
+
+    for (int i = 0; i < tamSeqMenor; i++)
+    {
+        if (seqMenor[i] == 'A')
+        {
+            seqMenor[i] = 0;
+        }else if (seqMenor[i] == 'T')
+        {
+            seqMenor[i] = 1;
+        }else if (seqMenor[i] == 'G')
+        {
+            seqMenor[i] = 2;
+        }else if (seqMenor[i] == 'C'){
+            seqMenor[i] = 3;
+
+        }else 
+        {
+            printf("Sequencia lida invalida, terminando o programa.");
+            exit(1);
+        }
+    }
+
     fclose(fileMaior);
     fclose(fileMenor);
 
