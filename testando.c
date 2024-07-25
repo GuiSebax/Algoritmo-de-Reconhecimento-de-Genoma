@@ -11,6 +11,7 @@
 #define sair 14
 
 #define maxSeq 10000
+#define maxNumThreads 1000
 
 char baseMapa[5] = {'A', 'T', 'G', 'C', '-'};
 
@@ -168,6 +169,11 @@ void leSequenciasDeArquivo()
         exit(1);
     }
 
+    int oldTamMaior = tamSeqMaior;
+    int oldTamMenor = tamSeqMenor;
+    char oldMaior[maxSeq] = seqMaior;
+    char oldMenor[maxSeq] = seqMenor;
+
     tamSeqMaior = fread(seqMaior, sizeof(char), maxSeq, fileMaior);
     tamSeqMenor = fread(seqMenor, sizeof(char), maxSeq, fileMenor);
 
@@ -187,7 +193,9 @@ void leSequenciasDeArquivo()
 
         }else 
         {
-            printf("Sequencia lida invalida, terminando o programa.");
+            tamSeqMaior = oldTamMaior;
+            seqMaior = oldMaior;
+            printf("Sequencia maior invalida, valor original restaurado.\n");
             exit(1);
         }
     }
@@ -208,7 +216,9 @@ void leSequenciasDeArquivo()
 
         }else 
         {
-            printf("Sequencia lida invalida, terminando o programa.");
+            tamSeqMenor = oldTamMenor;
+            seqMenor = oldMenor;
+            printf("Sequencia menor invalida, valor original restaurado. \n");
             exit(1);
         }
     }
@@ -730,9 +740,9 @@ int leNumeroDeThreads(void)
     printf("\nLeitura do Numero de Threads a Utilizar:\n");
     do
     {
-        printf("\nDigite valor > 0: ");
+        printf("\nDigite valor > 0 e < %d: ", maxNumThreads);
         scanf("%d", &numThreads);
-    } while (numThreads <= 0);
+    } while (numThreads <= 0 && numThreads > maxNumThreads);
     return numThreads;
 }
 
