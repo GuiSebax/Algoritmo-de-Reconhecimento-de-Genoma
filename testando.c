@@ -11,7 +11,6 @@
 #define sair 14
 
 #define maxSeq 10000
-#define maxNumThreads 1000
 
 char baseMapa[5] = {'A', 'T', 'G', 'C', '-'};
 
@@ -20,6 +19,8 @@ char seqMaior[maxSeq], seqMenor[maxSeq], alinhaMaior[maxSeq][maxSeq], alinhaMeno
 int matrizScores[maxSeq + 1][maxSeq + 1];
 
 int tamSeqMaior = 6, tamSeqMenor = 6, tamAlinha[maxSeq], penalGap = 0, grauMuta = 0, diagScore, linScore, colScore, k = 1, numThreads = 1;
+
+int maxNumThreads = 1000;
 
 int matrizPesos[4][4] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 
@@ -171,8 +172,10 @@ void leSequenciasDeArquivo()
 
     int oldTamMaior = tamSeqMaior;
     int oldTamMenor = tamSeqMenor;
-    char oldMaior[maxSeq] = seqMaior;
-    char oldMenor[maxSeq] = seqMenor;
+    char oldMaior[maxSeq];
+    char oldMenor[maxSeq];
+    memcpy(oldMaior, seqMaior, maxSeq);
+    memcpy(oldMenor, seqMenor, maxSeq);
 
     tamSeqMaior = fread(seqMaior, sizeof(char), maxSeq, fileMaior);
     tamSeqMenor = fread(seqMenor, sizeof(char), maxSeq, fileMenor);
@@ -182,21 +185,24 @@ void leSequenciasDeArquivo()
         if (seqMaior[i] == 'A')
         {
             seqMaior[i] = 0;
-        }else if (seqMaior[i] == 'T')
+        }
+        else if (seqMaior[i] == 'T')
         {
             seqMaior[i] = 1;
-        }else if (seqMaior[i] == 'G')
+        }
+        else if (seqMaior[i] == 'G')
         {
             seqMaior[i] = 2;
-        }else if (seqMaior[i] == 'C'){
+        }
+        else if (seqMaior[i] == 'C')
+        {
             seqMaior[i] = 3;
-
-        }else 
+        }
+        else
         {
             tamSeqMaior = oldTamMaior;
-            seqMaior = oldMaior;
+            memcpy(seqMaior, oldMaior, maxSeq);
             printf("Sequencia maior invalida, valor original restaurado.\n");
-            exit(1);
         }
     }
 
@@ -205,21 +211,24 @@ void leSequenciasDeArquivo()
         if (seqMenor[i] == 'A')
         {
             seqMenor[i] = 0;
-        }else if (seqMenor[i] == 'T')
+        }
+        else if (seqMenor[i] == 'T')
         {
             seqMenor[i] = 1;
-        }else if (seqMenor[i] == 'G')
+        }
+        else if (seqMenor[i] == 'G')
         {
             seqMenor[i] = 2;
-        }else if (seqMenor[i] == 'C'){
+        }
+        else if (seqMenor[i] == 'C')
+        {
             seqMenor[i] = 3;
-
-        }else 
+        }
+        else
         {
             tamSeqMenor = oldTamMenor;
-            seqMenor = oldMenor;
+            memcpy(seqMenor, oldMenor, maxSeq);
             printf("Sequencia menor invalida, valor original restaurado. \n");
-            exit(1);
         }
     }
 
@@ -742,7 +751,7 @@ int leNumeroDeThreads(void)
     {
         printf("\nDigite valor > 0 e < %d: ", maxNumThreads);
         scanf("%d", &numThreads);
-    } while (numThreads <= 0 && numThreads > maxNumThreads);
+    } while (numThreads <= 0 || numThreads > maxNumThreads);
     return numThreads;
 }
 
