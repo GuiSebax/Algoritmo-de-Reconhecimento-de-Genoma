@@ -380,6 +380,7 @@ void geraSequencias()
             seqMenor[i] = (seqMenor[i] + (rand() % 3) + 1) % 4;
             nTrocas++;
         }
+        i++;
     }
 
     printf("\nSequencias Geradas, Dif = %d Ind = %d\n", dif, ind);
