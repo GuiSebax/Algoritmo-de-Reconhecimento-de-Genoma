@@ -16,11 +16,11 @@
 
 char baseMapa[5] = {'A', 'T', 'G', 'C', '-'};
 
-char seqMaior[maxSeq], seqMenor[maxSeq], alinhaMaior[maxSeq][maxSeq], alinhaMenor[maxSeq][maxSeq];
+char seqMaior[maxSeq], seqMenor[maxSeq], alinhaMaior[maxSeq], alinhaMenor[maxSeq];
 
 int matrizScores[maxSeq + 1][maxSeq + 1];
 
-int tamSeqMaior = 4, tamSeqMenor = 3, tamAlinha[maxSeq], penalGap = 0, grauMuta = 0, diagScore, linScore, colScore, k = 1;
+int tamSeqMaior = 4, tamSeqMenor = 3, tamAlinha, penalGap = 0, grauMuta = 0, diagScore, linScore, colScore, k = 1;
 int matrizPesos[4][4] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 
 int alinhamentoScores[maxSeq];
@@ -45,6 +45,16 @@ void salvaMatrizScores(void);
 void mostraMatrizScores();
 int menuOpcao(void);
 void trataOpcao(int op);
+
+int max(int a, int b)
+{
+    return (a > b) ? a : b;
+}
+
+int min(int a, int b)
+{
+    return (a < b) ? a : b;
+}
 
 // Implementação das funções
 int leTamMaior(void)
@@ -216,6 +226,15 @@ void leSequenciasDeArquivo()
     fclose(fileMaior);
     fclose(fileMenor);
 
+    for (int i = 0; i < tamSeqMenor; i++)
+    {
+        int probAux = rand() % 100;
+        if (probAux < grauMuta)
+        {
+            seqMenor[i] = (seqMenor[i] + (rand() % 3) + 1) % 4;
+        }
+    }
+
     if (tamSeqMenor > tamSeqMaior)
     {
         printf("Erro: Sequencia menor é maior que a sequencia maior.\n");
@@ -231,7 +250,11 @@ void leSequencias()
     printf("1. Manual\n");
     printf("2. Arquivo\n");
     printf("3. Aleatoria\n");
+    printf("Digite sua opcao ==> ");
     scanf("%d", &opcao);
+
+    // Solicitar o grau de mutação
+    grauMuta = leGrauMutacao();
 
     if (opcao == 1)
     {
@@ -246,7 +269,6 @@ void leSequencias()
                 fgets(seqMaior, maxSeq, stdin);
                 tamSeqMaior = strlen(seqMaior) - 1;
             } while (tamSeqMaior < 1);
-            printf("\ntamSeqMaior = %d\n", tamSeqMaior);
             i = 0;
             erro = 0;
             do
@@ -282,8 +304,6 @@ void leSequencias()
                 fgets(seqMenor, maxSeq, stdin);
                 tamSeqMenor = strlen(seqMenor) - 1;
             } while ((tamSeqMenor < 1) || (tamSeqMenor > tamSeqMaior));
-            printf("\ntamSeqMenor = %d\n", tamSeqMenor);
-
             i = 0;
             erro = 0;
             do
@@ -308,17 +328,36 @@ void leSequencias()
                 i++;
             } while ((erro == 0) && (i < tamSeqMenor));
         } while (erro == 1);
+
+        // Aplicar mutações com base no grau de mutação
+        for (i = 0; i < tamSeqMenor; i++)
+        {
+            int probAux = rand() % 100;
+            if (probAux < grauMuta)
+            {
+                seqMenor[i] = (seqMenor[i] + (rand() % 3) + 1) % 4;
+            }
+        }
     }
     else if (opcao == 2)
     {
         leSequenciasDeArquivo();
+
+        // Aplicar mutações com base no grau de mutação
+        for (i = 0; i < tamSeqMenor; i++)
+        {
+            int probAux = rand() % 100;
+            if (probAux < grauMuta)
+            {
+                seqMenor[i] = (seqMenor[i] + (rand() % 3) + 1) % 4;
+            }
+        }
     }
     else if (opcao == 3)
     {
         leTamMaior();
         leTamMenor();
-        grauMuta = leGrauMutacao();
-        geraSequencias();
+        geraSequencias(); // Aqui a mutação já está aplicada dentro da função
     }
     else
     {
@@ -388,22 +427,16 @@ void mostraAlinhamentoGlobal(void)
 {
     int i;
 
-    printf("\nMelhor Alinhamento Global:\n");
+    printf("\nAlinhamento Obtido - Tamanho = %d:\n", tamAlinha);
 
-    printf("\nSequência Maior:\n");
-    printf("%c", baseMapa[(int)alinhaMaior[0][0]]);
-    for (i = 1; i < tamAlinha[0]; i++)
-    {
-        printf("%c", baseMapa[(int)alinhaMaior[0][i]]);
-    }
+    printf("%c", baseMapa[alinhaMaior[0]]);
+    for (i = 1; i < tamAlinha; i++)
+        printf("%c", baseMapa[alinhaMaior[i]]);
     printf("\n");
 
-    printf("\nSequência Menor:\n");
-    printf("%c", baseMapa[(int)alinhaMenor[0][0]]);
-    for (i = 1; i < tamAlinha[0]; i++)
-    {
-        printf("%c", baseMapa[(int)alinhaMenor[0][i]]);
-    }
+    printf("%c", baseMapa[alinhaMenor[0]]);
+    for (i = 1; i < tamAlinha; i++)
+        printf("%c", baseMapa[alinhaMenor[i]]);
     printf("\n");
 }
 
@@ -483,138 +516,111 @@ void mostraMatrizScores()
     }
 }
 
-void geraMatrizScoresMPI(int np, int blocoTamanho) {
-    int lin, col, peso;
+void geraMatrizScoresMPI(int np, int blocoTamanho)
+{
+    int lin, col, blocoInicio, blocoFim, i;
+    int scoreDiag, scoreUp, scoreLeft;
     MPI_Status status;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &np);
 
-    if (rank == 0) {
-        printf("Numero total de processos: %d\n\n", np);
-        printf("Numero de blocos: %d\n\n", blocoTamanho);
+    printf("Processo %d começando a gerar matriz de scores\n", rank);
 
-        // Inicializa bordas e envia para os outros processos
-        for (col = 0; col <= tamSeqMaior; col++) {
-            matrizScores[0][col] = -1 * (col * penalGap);
-        }
-        for (lin = 0; lin <= tamSeqMenor; lin++) {
-            matrizScores[lin][0] = -1 * (lin * penalGap);
+    // Cada processo determina as linhas que ele deve calcular
+    for (lin = rank + 1; lin <= tamSeqMenor; lin += np)
+    {
+        for (col = 1; col <= tamSeqMaior; col++)
+        {
+            scoreDiag = matrizScores[lin - 1][col - 1] + matrizPesos[seqMenor[lin - 1]][seqMaior[col - 1]];
+            scoreUp = matrizScores[lin - 1][col] + penalGap;
+            scoreLeft = matrizScores[lin][col - 1] + penalGap;
+
+            matrizScores[lin][col] = max(scoreDiag, max(scoreUp, scoreLeft));
         }
 
-        for (int proc = 1; proc < np; proc++) {
-            MPI_Send(&matrizScores[0][0], tamSeqMaior + 1, MPI_INT, proc, 0, MPI_COMM_WORLD);
+        printf("Processo %d calculou linha %d\n", rank, lin);
+
+        // Divide a linha em blocos e envia para o processo 0
+        for (blocoInicio = 0; blocoInicio < tamSeqMaior; blocoInicio += blocoTamanho)
+        {
+            blocoFim = min(blocoInicio + blocoTamanho, tamSeqMaior);
+
+            // Verifique se o bloco não é vazio antes de enviar
+            if (blocoFim > blocoInicio)
+            {
+                MPI_Send(&matrizScores[lin][blocoInicio], blocoFim - blocoInicio, MPI_INT, 0, 0, MPI_COMM_WORLD);
+                printf("Processo %d enviou bloco [%d-%d] da linha %d para processo 0\n", rank, blocoInicio, blocoFim, lin);
+            }
         }
-    } else {
-        // Recebe as bordas da matriz do processo 0
-        MPI_Recv(&matrizScores[0][0], tamSeqMaior + 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
     }
 
-    // Cálculo da matriz de scores
-    for (lin = 1 + rank; lin <= tamSeqMenor; lin += np) {
-        for (col = 1; col <= tamSeqMaior; col++) {
-            peso = matrizPesos[(int)(seqMenor[lin - 1])][(int)(seqMaior[col - 1])];
-            int diagScore = matrizScores[lin - 1][col - 1] + peso;
-            int linScore = matrizScores[lin][col - 1] - penalGap;
-            int colScore = matrizScores[lin - 1][col] - penalGap;
+    printf("Processo %d terminou de gerar a matriz de scores\n", rank);
 
-            if ((diagScore >= linScore) && (diagScore >= colScore))
-                matrizScores[lin][col] = diagScore;
-            else if (linScore > colScore)
-                matrizScores[lin][col] = linScore;
-            else
-                matrizScores[lin][col] = colScore;
+    // Processo 0 recebe as linhas e monta a matriz completa
+    if (rank == 0)
+    {
+        for (lin = 1; lin <= tamSeqMenor; lin++)
+        {
+            for (blocoInicio = 0; blocoInicio < tamSeqMaior; blocoInicio += blocoTamanho)
+            {
+                blocoFim = min(blocoInicio + blocoTamanho, tamSeqMaior);
 
-            // Transmite o bloco para o processo 0 e, se necessário, para o próximo processo
-            if ((col % blocoTamanho == 0 || col == tamSeqMaior) && rank != 0) {
-                MPI_Send(&matrizScores[lin][col - blocoTamanho + 1], blocoTamanho, MPI_INT, 0, 0, MPI_COMM_WORLD);
-                if (rank != np - 1) {
-                    MPI_Send(&matrizScores[lin][col - blocoTamanho + 1], blocoTamanho, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+                // Receba o bloco somente se não for vazio
+                if (blocoFim > blocoInicio)
+                {
+                    MPI_Recv(&matrizScores[lin][blocoInicio], blocoFim - blocoInicio, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+                    printf("Processo 0 recebeu bloco [%d-%d] da linha %d do processo %d\n", blocoInicio, blocoFim, lin, status.MPI_SOURCE);
                 }
             }
         }
     }
 
-    // Recepção dos blocos pelo processo 0
-    if (rank == 0) {
-        for (int proc = 1; proc < np; proc++) {
-            for (lin = 1 + proc; lin <= tamSeqMenor; lin += np) {
-                for (col = 1; col <= tamSeqMaior; col += blocoTamanho) {
-                    MPI_Recv(&matrizScores[lin][col], blocoTamanho, MPI_INT, proc, 0, MPI_COMM_WORLD, &status);
-                }
-            }
-        }
-        printf("Processo 0: Matriz completa recebida\n");
-    }
+    // Sincroniza todos os processos após a comunicação
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    // Envia os dados calculados de volta para o processo 0 para sincronizar as partes que o processo 0 não calculou
-    if (rank != 0) {
-        for (lin = 1 + rank; lin <= tamSeqMenor; lin += np) {
-            MPI_Send(&matrizScores[lin][1], tamSeqMaior, MPI_INT, 0, 0, MPI_COMM_WORLD);
-        }
-    } else {
-        for (int proc = 1; proc < np; proc++) {
-            for (lin = 1 + proc; lin <= tamSeqMenor; lin += np) {
-                MPI_Recv(&matrizScores[lin][1], tamSeqMaior, MPI_INT, proc, 0, MPI_COMM_WORLD, &status);
-            }
-        }
-    }
+    printf("Processo %d completou a comunicação de matriz de scores\n", rank);
 }
-
-
 
 // Traceback
 void traceBackMPI()
 {
-    if (rank == 0)
+    int lin = tamSeqMenor;
+    int col = tamSeqMaior;
+    tamAlinha = 0;
+
+    // Executa o traceback
+    while (lin > 0 || col > 0)
     {
-        int tbLin = tamSeqMenor;
-        int tbCol = tamSeqMaior;
-        int pos = 0;
-
-        printf("\nTraceback executado pelo processo 0\n");
-
-        while (tbLin > 0 && tbCol > 0)
+        if (lin > 0 && col > 0 && matrizScores[lin][col] == matrizScores[lin - 1][col - 1] + matrizPesos[seqMenor[lin - 1]][seqMaior[col - 1]])
         {
-            int peso = matrizPesos[(int)(seqMenor[tbLin - 1])][(int)(seqMaior[tbCol - 1])];
-            int diagScore = matrizScores[tbLin - 1][tbCol - 1] + peso;
-            int linScore = matrizScores[tbLin][tbCol - 1] - penalGap;
-            int colScore = matrizScores[tbLin - 1][tbCol] - penalGap;
-
-            if ((diagScore >= linScore) && (diagScore >= colScore))
-            {
-                alinhaMenor[0][pos] = seqMenor[tbLin - 1];
-                alinhaMaior[0][pos] = seqMaior[tbCol - 1];
-                tbLin--;
-                tbCol--;
-            }
-            else if (linScore > colScore)
-            {
-                alinhaMenor[0][pos] = '-';
-                alinhaMaior[0][pos] = seqMaior[tbCol - 1];
-                tbCol--;
-            }
-            else
-            {
-                alinhaMenor[0][pos] = seqMenor[tbLin - 1];
-                alinhaMaior[0][pos] = '-';
-                tbLin--;
-            }
-            pos++;
+            alinhaMaior[tamAlinha] = seqMaior[col - 1];
+            alinhaMenor[tamAlinha] = seqMenor[lin - 1];
+            lin--;
+            col--;
         }
-
-        // Reverter o alinhamento para a ordem correta
-        for (int i = 0; i < pos / 2; i++)
+        else if (lin > 0 && matrizScores[lin][col] == matrizScores[lin - 1][col] + penalGap)
         {
-            char aux = alinhaMenor[0][i];
-            alinhaMenor[0][i] = alinhaMenor[0][pos - i - 1];
-            alinhaMenor[0][pos - i - 1] = aux;
-
-            aux = alinhaMaior[0][i];
-            alinhaMaior[0][i] = alinhaMaior[0][pos - i - 1];
-            alinhaMaior[0][pos - i - 1] = aux;
+            alinhaMaior[tamAlinha] = 4; // Gap '-'
+            alinhaMenor[tamAlinha] = seqMenor[lin - 1];
+            lin--;
         }
+        else
+        {
+            alinhaMaior[tamAlinha] = seqMaior[col - 1];
+            alinhaMenor[tamAlinha] = 4; // Gap '-'
+            col--;
+        }
+        tamAlinha++;
+    }
 
-        printf("\nTraceback concluído. Alinhamento gerado.\n");
+    // Inverte o alinhamento para a ordem correta
+    for (int i = 0; i < tamAlinha / 2; i++)
+    {
+        int temp = alinhaMaior[i];
+        alinhaMaior[i] = alinhaMaior[tamAlinha - 1 - i];
+        alinhaMaior[tamAlinha - 1 - i] = temp;
+
+        temp = alinhaMenor[i];
+        alinhaMenor[i] = alinhaMenor[tamAlinha - 1 - i];
+        alinhaMenor[tamAlinha - 1 - i] = temp;
     }
 }
 
@@ -626,7 +632,7 @@ int menuOpcao(void)
     do
     {
         printf("\nMenu de Opcao:");
-        printf("\n<01> Definir o Numero de Blocos");
+        printf("\n<01> Definir o tamanho do Bloco");
         printf("\n<02> Ler Matriz de Pesos");
         printf("\n<03> Mostrar Matriz de Pesos");
         printf("\n<04> Ler Penalidade de Gap");
@@ -671,29 +677,13 @@ void trataOpcao(int op)
         printf("\nPenalidade = %d", penalGap);
         break;
     case 6:
-        printf("\nDeseja Definicao: <1>MANUAL, <2>ARQUIVO ou <3>ALEATORIA? = ");
-        scanf("%d", &resp);
-        scanf("%c", &enter); /* remove o enter */
-        if (resp == 1)
-        {
-            leSequencias();
-        }
-        else if (resp == 2)
-        {
-            leSequenciasDeArquivo();
-        }
-        else if (resp == 3)
-        {
-            leTamMaior();
-            leTamMenor();
-            grauMuta = leGrauMutacao();
-            geraSequencias();
-        }
+        leSequencias();
         break;
     case 7:
         mostraSequencias();
         break;
     case 8:
+        printf("Número de processos: %d, Tamanho do bloco: %d\n", np, blocoTamanho); // Verifique os valores
         geraMatrizScoresMPI(np, blocoTamanho);
         break;
     case 9:
@@ -717,20 +707,27 @@ void trataOpcao(int op)
     }
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     int opcao;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &np);
 
-    if (rank == 0) {  
+    if (rank == 0)
+    {
         printf("Numero total de processos: %d\n", np);
-        do {
+        do
+        {
             printf("\n\nPrograma Needleman-Wunsch Paralelo com MPI\n");
             opcao = menuOpcao();
             trataOpcao(opcao);
         } while (opcao != 13);
+    }
+    else
+    {
+        geraMatrizScoresMPI(np, blocoTamanho);
     }
 
     MPI_Finalize();
