@@ -526,47 +526,103 @@ void mostraMatrizScores()
 }
 
 void geraMatrizScoresMPI(int np, int blocoTamanho) {
-    int lin, col, peso;
-    int escoreDiag, escoreLin, escoreCol;
-    int *linhaBloco = (int *)malloc((tamSeqMaior + 1) * sizeof(int));
-    MPI_Status st;
+    int i, j;
+    int linhasPorProcesso, linhasRestantes;
+    int startLinha, endLinha;
+    int numLinhas = tamSeqMenor + 1; // Total de linhas da matriz
+    MPI_Status status;
 
-    // Processo 0 não realiza o cálculo, apenas coleta as linhas
-    if (rank != 0) {
-        // Cada processo calcula as linhas intercaladas
-        for (lin = rank; lin <= tamSeqMenor; lin += np) {
-            if (lin == rank) {
-                // Inicializando a coluna de penalidades/gaps para a primeira linha do processo
-                matrizScores[lin][0] = -1 * (lin * penalGap);
-            }
-            for (col = 1; col <= tamSeqMaior; col++) {
-                peso = matrizPesos[(seqMenor[lin - 1])][(seqMaior[col - 1])];
-                escoreDiag = matrizScores[lin - 1][col - 1] + peso;
-                escoreLin = matrizScores[lin][col - 1] - penalGap;
-                escoreCol = matrizScores[lin - 1][col] - penalGap;
-                matrizScores[lin][col] = max(max(escoreDiag, escoreLin), escoreCol);
-            }
-            // Transmitindo a linha calculada em blocos para o processo 0
-            for (int i = rank; i <= tamSeqMaior; i += blocoTamanho) {
-                int tamanhoEnvio = min(blocoTamanho, tamSeqMaior + 1 - i);
-                MPI_Send(&matrizScores[lin][i], tamanhoEnvio, MPI_INT, i, 0, MPI_COMM_WORLD);
-            }
+    // Calcular número de linhas por processo
+    linhasPorProcesso = numLinhas / np;
+    linhasRestantes = numLinhas % np;
+
+    // Distribuição das linhas entre os processos
+    startLinha = rank * linhasPorProcesso;
+    endLinha = startLinha + linhasPorProcesso - 1;
+
+    if (rank < linhasRestantes) {
+        startLinha += rank;
+        endLinha += rank + 1;
+    } else {
+        startLinha += linhasRestantes;
+        endLinha += linhasRestantes;
+    }
+
+    // Ajustar o range para o último processo
+    if (rank == np - 1) {
+        endLinha = numLinhas - 1;
+    }
+
+    // Inicializar a matriz local de scores para o processo atual
+    int localMatrizScores[tamSeqMenor + 1][tamSeqMaior + 1];
+
+    // Preencher a primeira linha da matriz
+    if (rank == 0) {
+        for (j = 0; j <= tamSeqMaior; j++) {
+            matrizScores[0][j] = j * penalGap;
+        }
+        // Enviar a primeira linha para todos os outros processos e o tamanho do bloco
+        for (i = 1; i < np; i++) {
+            MPI_Send(&blocoTamanho, sizeof(int), MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Send(matrizScores[0], tamSeqMaior + 1, MPI_INT, i, 0, MPI_COMM_WORLD);
         }
     } else {
-        // Processo 0 recebe as linhas de todos os processos
-        for (lin = 1; lin <= tamSeqMenor; lin++) {
-            for (int p = 1; p < np; p++) {
-                if (lin % np == p) {
-                    for (int i = 0; i <= tamSeqMaior; i += blocoTamanho) {
-                        int tamanhoReceb = min(blocoTamanho, tamSeqMaior + 1 - i);
-                        MPI_Recv(&matrizScores[lin][i], tamanhoReceb, MPI_INT, p, 0, MPI_COMM_WORLD, &st);
-                    }
+        // Receber a primeira linha da matriz
+        MPI_Recv(matrizScores[0], tamSeqMaior + 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+    }
+
+    // Preencher a matriz de scores local para o processo atual
+    for (i = startLinha; i <= endLinha; i++) {
+        for (j = 1; j <= tamSeqMaior; j++) {
+            if (i == 0) {
+                localMatrizScores[i][j] = j * penalGap;
+            } else {
+                localMatrizScores[i][j] = max(localMatrizScores[i - 1][j] + penalGap,
+                                              localMatrizScores[i][j - 1] + penalGap);
+
+                if (seqMaior[j - 1] == seqMenor[i - 1]) {
+                    diagScore = matrizPesos[seqMenor[i - 1]][seqMaior[j - 1]];
+                } else {
+                    diagScore = 0;
                 }
+                localMatrizScores[i][j] = max(localMatrizScores[i][j],
+                                              localMatrizScores[i - 1][j - 1] + diagScore);
             }
         }
     }
-    free(linhaBloco);
+
+    // Enviar as linhas calculadas para o processo 0
+    if (rank != 0) {
+        for (i = startLinha; i <= endLinha; i++) {
+            MPI_Send(localMatrizScores[i], tamSeqMaior + 1, MPI_INT, 0, i, MPI_COMM_WORLD);
+        }
+    }
+
+    // Receber as linhas calculadas de todos os processos
+    if (rank == 0) {
+        for (i = 1; i < np; i++) {
+            int startLinhaRecebida = i * linhasPorProcesso;
+            int endLinhaRecebida = startLinhaRecebida + linhasPorProcesso - 1;
+
+            if (i < linhasRestantes) {
+                startLinhaRecebida += i;
+                endLinhaRecebida += i + 1;
+            } else {
+                startLinhaRecebida += linhasRestantes;
+                endLinhaRecebida += linhasRestantes;
+            }
+
+            if (i == np - 1) {
+                endLinhaRecebida = numLinhas - 1;
+            }
+
+            for (j = startLinhaRecebida; j <= endLinhaRecebida; j++) {
+                MPI_Recv(matrizScores[j], tamSeqMaior + 1, MPI_INT, i, j, MPI_COMM_WORLD, &status);
+            }
+        }
+    }
 }
+
 
 // Traceback
 void traceBackMPI()
@@ -703,6 +759,7 @@ int main(int argc, char *argv[])
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &np);
+    MPI_Status status;
 
     if (rank == 0)
     {
@@ -713,12 +770,12 @@ int main(int argc, char *argv[])
             opcao = menuOpcao();
             trataOpcao(opcao);
         } while (opcao != 13);
+    }else {
+        int tamRecv;
+        MPI_Recv(&tamRecv, sizeof(int), MPI_INT, 0, rank, MPI_COMM_WORLD, &status);
+        geraMatrizScoresMPI(rank, tamRecv);
     }
-    else
-    {
-        geraMatrizScoresMPI(np, blocoTamanho);
-    }
-
+   
     MPI_Finalize();
     return 0;
 }
