@@ -63,6 +63,7 @@ int leTamMaior(void)
     do
     {
         printf("\nDigite 0 < valor < %d = ", maxSeq);
+        fflush(stdout);
         scanf("%d", &tamSeqMaior);
     } while ((tamSeqMaior < 1) || (tamSeqMaior > maxSeq));
     return tamSeqMaior;
@@ -74,6 +75,7 @@ int leTamMenor(void)
     do
     {
         printf("\nDigite 0 < valor <= %d = ", tamSeqMaior);
+        fflush(stdout);
         scanf("%d", &tamSeqMenor);
     } while ((tamSeqMenor < 1) || (tamSeqMenor > tamSeqMaior));
     return tamSeqMenor;
@@ -87,6 +89,7 @@ int lePenalidade(void)
     do
     {
         printf("\nDigite valor >= 0 = ");
+        fflush(stdout);
         scanf("%d", &penal);
     } while (penal < 0);
 
@@ -103,6 +106,7 @@ void leMatrizPesos()
         for (j = 0; j < 4; j++)
         {
             printf("Digite valor %c x %c = ", baseMapa[i], baseMapa[j]);
+            fflush(stdout);
             scanf("%d", &(matrizPesos[i][j]));
         }
         printf("\n");
@@ -132,6 +136,7 @@ int leGrauMutacao(void)
     do
     {
         printf("\nDigite 0 <= valor <= 100 = ");
+        fflush(stdout);
         scanf("%d", &prob);
     } while ((prob < 0) || (prob > 100));
 
@@ -144,6 +149,7 @@ void leSequenciasDeArquivo()
     char nomeArquivoMaior[100], nomeArquivoMenor[100];
 
     printf("\nDigite o nome do arquivo para a Sequencia Maior: ");
+    fflush(stdout);
     scanf("%s", nomeArquivoMaior);
     fileMaior = fopen(nomeArquivoMaior, "r");
     if (fileMaior == NULL)
@@ -153,6 +159,7 @@ void leSequenciasDeArquivo()
     }
 
     printf("\nDigite o nome do arquivo para a Sequencia Menor: ");
+    fflush(stdout);
     scanf("%s", nomeArquivoMenor);
     fileMenor = fopen(nomeArquivoMenor, "r");
     if (fileMenor == NULL)
@@ -251,6 +258,7 @@ void leSequencias()
     printf("2. Arquivo\n");
     printf("3. Aleatoria\n");
     printf("Digite sua opcao ==> ");
+    fflush(stdout);
     scanf("%d", &opcao);
 
     // Solicitar o grau de mutação
@@ -447,6 +455,7 @@ void salvaMatrizScores(void)
     int i, lin, col;
 
     printf("\nDigite o nome do arquivo para salvar a Matriz de Scores: ");
+    fflush(stdout);
     scanf("%s", nomeArquivo);
     file = fopen(nomeArquivo, "w");
     if (file == NULL)
@@ -516,67 +525,47 @@ void mostraMatrizScores()
     }
 }
 
-void geraMatrizScoresMPI(int np, int blocoTamanho)
-{
-    int lin, col, blocoInicio, blocoFim, i;
-    int scoreDiag, scoreUp, scoreLeft;
-    MPI_Status status;
+void geraMatrizScoresMPI(int np, int blocoTamanho) {
+    int lin, col, peso;
+    int escoreDiag, escoreLin, escoreCol;
+    int *linhaBloco = (int *)malloc((tamSeqMaior + 1) * sizeof(int));
+    MPI_Status st;
 
-    printf("Processo %d começando a gerar matriz de scores\n", rank);
-
-    // Cada processo determina as linhas que ele deve calcular
-    for (lin = rank + 1; lin <= tamSeqMenor; lin += np)
-    {
-        for (col = 1; col <= tamSeqMaior; col++)
-        {
-            scoreDiag = matrizScores[lin - 1][col - 1] + matrizPesos[seqMenor[lin - 1]][seqMaior[col - 1]];
-            scoreUp = matrizScores[lin - 1][col] + penalGap;
-            scoreLeft = matrizScores[lin][col - 1] + penalGap;
-
-            matrizScores[lin][col] = max(scoreDiag, max(scoreUp, scoreLeft));
-        }
-
-        printf("Processo %d calculou linha %d\n", rank, lin);
-
-        // Divide a linha em blocos e envia para o processo 0
-        for (blocoInicio = 0; blocoInicio < tamSeqMaior; blocoInicio += blocoTamanho)
-        {
-            blocoFim = min(blocoInicio + blocoTamanho, tamSeqMaior);
-
-            // Verifique se o bloco não é vazio antes de enviar
-            if (blocoFim > blocoInicio)
-            {
-                MPI_Send(&matrizScores[lin][blocoInicio], blocoFim - blocoInicio, MPI_INT, 0, 0, MPI_COMM_WORLD);
-                printf("Processo %d enviou bloco [%d-%d] da linha %d para processo 0\n", rank, blocoInicio, blocoFim, lin);
+    // Processo 0 não realiza o cálculo, apenas coleta as linhas
+    if (rank != 0) {
+        // Cada processo calcula as linhas intercaladas
+        for (lin = rank; lin <= tamSeqMenor; lin += np) {
+            if (lin == rank) {
+                // Inicializando a coluna de penalidades/gaps para a primeira linha do processo
+                matrizScores[lin][0] = -1 * (lin * penalGap);
+            }
+            for (col = 1; col <= tamSeqMaior; col++) {
+                peso = matrizPesos[(seqMenor[lin - 1])][(seqMaior[col - 1])];
+                escoreDiag = matrizScores[lin - 1][col - 1] + peso;
+                escoreLin = matrizScores[lin][col - 1] - penalGap;
+                escoreCol = matrizScores[lin - 1][col] - penalGap;
+                matrizScores[lin][col] = max(max(escoreDiag, escoreLin), escoreCol);
+            }
+            // Transmitindo a linha calculada em blocos para o processo 0
+            for (int i = rank; i <= tamSeqMaior; i += blocoTamanho) {
+                int tamanhoEnvio = min(blocoTamanho, tamSeqMaior + 1 - i);
+                MPI_Send(&matrizScores[lin][i], tamanhoEnvio, MPI_INT, i, 0, MPI_COMM_WORLD);
             }
         }
-    }
-
-    printf("Processo %d terminou de gerar a matriz de scores\n", rank);
-
-    // Processo 0 recebe as linhas e monta a matriz completa
-    if (rank == 0)
-    {
-        for (lin = 1; lin <= tamSeqMenor; lin++)
-        {
-            for (blocoInicio = 0; blocoInicio < tamSeqMaior; blocoInicio += blocoTamanho)
-            {
-                blocoFim = min(blocoInicio + blocoTamanho, tamSeqMaior);
-
-                // Receba o bloco somente se não for vazio
-                if (blocoFim > blocoInicio)
-                {
-                    MPI_Recv(&matrizScores[lin][blocoInicio], blocoFim - blocoInicio, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-                    printf("Processo 0 recebeu bloco [%d-%d] da linha %d do processo %d\n", blocoInicio, blocoFim, lin, status.MPI_SOURCE);
+    } else {
+        // Processo 0 recebe as linhas de todos os processos
+        for (lin = 1; lin <= tamSeqMenor; lin++) {
+            for (int p = 1; p < np; p++) {
+                if (lin % np == p) {
+                    for (int i = 0; i <= tamSeqMaior; i += blocoTamanho) {
+                        int tamanhoReceb = min(blocoTamanho, tamSeqMaior + 1 - i);
+                        MPI_Recv(&matrizScores[lin][i], tamanhoReceb, MPI_INT, p, 0, MPI_COMM_WORLD, &st);
+                    }
                 }
             }
         }
     }
-
-    // Sincroniza todos os processos após a comunicação
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    printf("Processo %d completou a comunicação de matriz de scores\n", rank);
+    free(linhaBloco);
 }
 
 // Traceback
@@ -586,7 +575,6 @@ void traceBackMPI()
     int col = tamSeqMaior;
     tamAlinha = 0;
 
-    // Executa o traceback
     while (lin > 0 || col > 0)
     {
         if (lin > 0 && col > 0 && matrizScores[lin][col] == matrizScores[lin - 1][col - 1] + matrizPesos[seqMenor[lin - 1]][seqMaior[col - 1]])
@@ -598,20 +586,19 @@ void traceBackMPI()
         }
         else if (lin > 0 && matrizScores[lin][col] == matrizScores[lin - 1][col] + penalGap)
         {
-            alinhaMaior[tamAlinha] = 4; // Gap '-'
+            alinhaMaior[tamAlinha] = 4;
             alinhaMenor[tamAlinha] = seqMenor[lin - 1];
             lin--;
         }
         else
         {
             alinhaMaior[tamAlinha] = seqMaior[col - 1];
-            alinhaMenor[tamAlinha] = 4; // Gap '-'
+            alinhaMenor[tamAlinha] = 4;
             col--;
         }
         tamAlinha++;
     }
 
-    // Inverte o alinhamento para a ordem correta
     for (int i = 0; i < tamAlinha / 2; i++)
     {
         int temp = alinhaMaior[i];
@@ -623,7 +610,6 @@ void traceBackMPI()
         alinhaMenor[tamAlinha - 1 - i] = temp;
     }
 }
-
 int menuOpcao(void)
 {
     int op;
@@ -646,7 +632,9 @@ int menuOpcao(void)
         printf("\n<12> Mostrar Alinhamento Global");
         printf("\n<13> Sair");
         printf("\nDigite a opcao => ");
+        fflush(stdout);
         scanf("%d", &op);
+        fflush(stdout);
         scanf("%c", &enter);
     } while ((op < 1) || (op > 13));
 
@@ -662,6 +650,7 @@ void trataOpcao(int op)
     {
     case 1:
         printf("\nDigite o tamanho do bloco: ");
+        fflush(stdout);
         scanf("%d", &blocoTamanho);
         break;
     case 2:
