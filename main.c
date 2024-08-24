@@ -380,7 +380,6 @@ void geraSequencias()
             seqMenor[i] = (seqMenor[i] + (rand() % 3) + 1) % 4;
             nTrocas++;
         }
-        i++;
     }
 
     printf("\nSequencias Geradas, Dif = %d Ind = %d\n", dif, ind);
@@ -561,20 +560,21 @@ void geraMatrizScores(void)
 
     printf("\nGeracao da Matriz de Scores:\n");
 
+    // Inicialização da primeira linha e primeira coluna
     for (col = 0; col <= tamSeqMaior; col++)
         matrizScores[0][col] = -1 * (col * penalGap);
 
     for (lin = 0; lin <= tamSeqMenor; lin++)
         matrizScores[lin][0] = -1 * (lin * penalGap);
 
+    // Divisão de linhas entre as threads
     for (t = 0; t < numThreads; t++)
     {
         thread_data[t].thread_id = t;
         thread_data[t].num_threads = numThreads;
         thread_data[t].lin_start = 1 + t * (tamSeqMenor / numThreads);
-        thread_data[t].lin_end = 1 + (t + 1) * (tamSeqMenor / numThreads);
-        if (thread_data[t].lin_end > tamSeqMenor + 1)
-            thread_data[t].lin_end = tamSeqMenor + 1;
+        thread_data[t].lin_end = (t == numThreads - 1) ? tamSeqMenor + 1 : 1 + (t + 1) * (tamSeqMenor / numThreads);
+
         rc = pthread_create(&threads[t], NULL, preencheMatrizScores, (void *)&thread_data[t]);
         if (rc)
         {
@@ -583,6 +583,7 @@ void geraMatrizScores(void)
         }
     }
 
+    // Espera pela finalização de todas as threads
     for (t = 0; t < numThreads; t++)
     {
         rc = pthread_join(threads[t], &status);
