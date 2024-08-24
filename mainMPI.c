@@ -4,6 +4,16 @@
 #include <time.h>
 #include <mpi.h>
 
+/*
+    Trabalho de Programação Concorrente
+    Algoritmo de Genoma - Versão MPI
+
+    Guilherme Frare Clemente - RA:124349
+    Marcos Vinicius de Oliveira - RA:124408
+    Caio Vieira Arasaki - RA:127513
+
+*/
+
 #define A 0
 #define T 1
 #define G 2
@@ -11,7 +21,7 @@
 #define X 4
 
 #define maxSeq 1000
-#define sair 11
+#define sair 12
 
 char mapaBases[5] = {'A', 'T', 'G', 'C', '-'};
 
@@ -258,113 +268,132 @@ void geraSequenciasAleatorias(void)
 
     printf("\nSequencias Geradas: Dif = %d, IndRef = %d, NTrocas = %d\n", dif, indRef, nTrocas);
 }
-
-void geraMatrizEscoresMPI(int rank, int size, int blocoTamanho)
+void geraMatrizEscoresMPI(int rank, int np, int blockSize)
 {
-    int lin, col, peso, inicio, fim;
-    int numBlocos, blocoAtual, elementosNoBloco;
-    MPI_Status st;
+    int lin, col, peso;
+    MPI_Status status;
 
-    // Garantir que o número de processos não seja maior que o tamanho da sequência maior
-    if (size > tamSeqMaior)
-    {
-        if (rank == 0)
-        {
-            printf("Número de processos é maior que o tamanho da sequência maior. Ajustando para %d processos.\n", tamSeqMaior);
-        }
-        size = tamSeqMaior;
-    }
+    // Inicialize as variáveis globais localmente para cada processo
+    int localUMaior = -1;
+    int localLinUMaior = -1;
+    int localColUMaior = -1;
 
-    // Inicialização da matriz de scores no processo 0 (primeira linha e primeira coluna)
+    // Processo 0 inicializa a primeira linha e a primeira coluna e envia para os outros processos
     if (rank == 0)
     {
         for (col = 0; col <= tamSeqMaior; col++)
-            matrizEscores[0][col] = -1 * (col * penalGap);
-
-        for (lin = 0; lin <= tamSeqMenor; lin++)
-            matrizEscores[lin][0] = -1 * (lin * penalGap);
-    }
-
-    // Cálculo do início e fim das linhas que cada processo vai calcular
-    inicio = (tamSeqMenor * rank) / size + 1;
-    fim = (tamSeqMenor * (rank + 1)) / size;
-
-    // Cálculo da matriz de scores, ignorando a primeira linha e a primeira coluna
-    for (lin = inicio; lin <= fim; lin++)
-    {
-        for (col = 1; col <= tamSeqMaior; col++)
-        {
-            peso = matrizPesos[seqMenor[lin - 1]][seqMaior[col - 1]];
-            escoreDiag = matrizEscores[lin - 1][col - 1] + peso;
-            escoreLin = matrizEscores[lin][col - 1] - penalGap;
-            escoreCol = matrizEscores[lin - 1][col] - penalGap;
-
-            // Assegurar que o maior valor seja escolhido
-            matrizEscores[lin][col] = escoreDiag;
-            if (escoreLin > matrizEscores[lin][col])
-                matrizEscores[lin][col] = escoreLin;
-            if (escoreCol > matrizEscores[lin][col])
-                matrizEscores[lin][col] = escoreCol;
-        }
-
-        // Envio da linha em blocos para o processo 0
-        numBlocos = (tamSeqMaior + 1) / blocoTamanho;
-        if ((tamSeqMaior + 1) % blocoTamanho != 0)
-            numBlocos++;
-
-        for (blocoAtual = 0; blocoAtual < numBlocos; blocoAtual++)
-        {
-            int inicioBloco = blocoAtual * blocoTamanho;
-            elementosNoBloco = blocoTamanho;
-            if (inicioBloco + elementosNoBloco > tamSeqMaior + 1)
-            {
-                elementosNoBloco = tamSeqMaior + 1 - inicioBloco;
-            }
-
-            if (rank != 0)
-            {
-                MPI_Send(&matrizEscores[lin][inicioBloco], elementosNoBloco, MPI_INT, 0, lin, MPI_COMM_WORLD);
-            }
-            else
-            {
-                if (rank != 0)
-                {
-                    MPI_Recv(&matrizEscores[lin][inicioBloco], elementosNoBloco, MPI_INT, rank, lin, MPI_COMM_WORLD, &st);
-                }
-            }
-        }
-    }
-
-    // Cálculo dos escores máximos no processo 0
-    if (rank == 0)
-    {
-        linPMaior = 1;
-        colPMaior = 1;
-        PMaior = matrizEscores[1][1];
-        linUMaior = 1;
-        colUMaior = 1;
-        UMaior = matrizEscores[1][1];
+            matrizEscores[0][col] = -col * penalGap;
 
         for (lin = 1; lin <= tamSeqMenor; lin++)
+            matrizEscores[lin][0] = -lin * penalGap;
+
+        // Enviar a primeira linha e a primeira coluna para os outros processos
+        for (int i = 1; i < np; i++)
+        {
+            MPI_Send(matrizEscores[0], tamSeqMaior + 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+            for (lin = 1; lin <= tamSeqMenor; lin++)
+            {
+                MPI_Send(&matrizEscores[lin][0], 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+            }
+        }
+    }
+    else
+    {
+        // Receber a primeira linha e a primeira coluna da matriz de escores
+        MPI_Recv(matrizEscores[0], tamSeqMaior + 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+        for (lin = 1; lin <= tamSeqMenor; lin++)
+        {
+            MPI_Recv(&matrizEscores[lin][0], 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+        }
+    }
+
+    // Processos 1 a np-1 geram e enviam as linhas de forma paralela
+    if (rank > 0)
+    {
+        for (lin = rank; lin <= tamSeqMenor; lin += np - 1)
         {
             for (col = 1; col <= tamSeqMaior; col++)
             {
-                if (PMaior < matrizEscores[lin][col])
+                peso = matrizPesos[seqMenor[lin - 1]][seqMaior[col - 1]];
+                int escoreDiag = matrizEscores[lin - 1][col - 1] + peso;
+                int escoreLin = matrizEscores[lin][col - 1] - penalGap;
+                int escoreCol = matrizEscores[lin - 1][col] - penalGap;
+
+                matrizEscores[lin][col] = (escoreDiag > escoreLin) ? (escoreDiag > escoreCol ? escoreDiag : escoreCol) : (escoreLin > escoreCol ? escoreLin : escoreCol);
+
+                // Atualizar o último maior escore localmente
+                if (matrizEscores[lin][col] >= localUMaior)
                 {
-                    linPMaior = lin;
-                    colPMaior = col;
-                    PMaior = matrizEscores[lin][col];
+                    localUMaior = matrizEscores[lin][col];
+                    localLinUMaior = lin;
+                    localColUMaior = col;
                 }
-                if (UMaior <= matrizEscores[lin][col])
+
+                // Envia blocos de dados calculados para o processo 0
+                if (col % blockSize == 0 || col == tamSeqMaior)
                 {
-                    linUMaior = lin;
-                    colUMaior = col;
-                    UMaior = matrizEscores[lin][col];
+                    int bloco = (col % blockSize == 0) ? blockSize : col % blockSize;
+                    MPI_Send(&matrizEscores[lin][col - bloco + 1], bloco, MPI_INT, 0, 0, MPI_COMM_WORLD);
                 }
             }
         }
+    }
+
+    // Processo 0 recebe os blocos de dados gerados pelos outros processos e determina o maior escore global
+    if (rank == 0)
+    {
+        UMaior = -1;
+        linUMaior = colUMaior = -1;
+
+        for (int proc = 1; proc < np; proc++)
+        {
+            for (lin = proc; lin <= tamSeqMenor; lin += np - 1)
+            {
+                for (int b = 0; b < tamSeqMaior; b += blockSize)
+                {
+                    int bloco = (b + blockSize <= tamSeqMaior) ? blockSize : tamSeqMaior - b;
+                    MPI_Recv(&matrizEscores[lin][b + 1], bloco, MPI_INT, proc, 0, MPI_COMM_WORLD, &status);
+
+                    // Verificar e atualizar o último maior escore global
+                    for (int col = b + 1; col <= b + bloco; col++)
+                    {
+                        if (matrizEscores[lin][col] >= UMaior)
+                        {
+                            UMaior = matrizEscores[lin][col];
+                            linUMaior = lin;
+                            colUMaior = col;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Enviar o último maior escore local para o processo 0
+    if (rank > 0)
+    {
+        int localData[3] = {localUMaior, localLinUMaior, localColUMaior};
+        MPI_Send(localData, 3, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    }
+
+    // Processo 0 recebe e compara os valores máximos dos outros processos
+    if (rank == 0)
+    {
+        for (int proc = 1; proc < np; proc++)
+        {
+            int receivedData[3];
+            MPI_Recv(receivedData, 3, MPI_INT, proc, 0, MPI_COMM_WORLD, &status);
+
+            // Atualizar o último maior escore global
+            if (receivedData[0] >= UMaior)
+            {
+                UMaior = receivedData[0];
+                linUMaior = receivedData[1];
+                colUMaior = receivedData[2];
+            }
+        }
+
         printf("\nMatriz de escores Gerada.");
-        printf("\nPrimeiro Maior escore = %d na celula [%d,%d]", PMaior, linPMaior, colPMaior);
         printf("\nUltimo Maior escore = %d na celula [%d,%d]", UMaior, linUMaior, colUMaior);
     }
 }
@@ -424,25 +453,16 @@ void gravaMatrizEscoresEmArquivo(void)
     }
 
     fclose(fp);
-    printf("Matriz de escores gravada em matriz_escores.txt\n");
+    printf("\nMatriz de escores gravada em matriz_escores.txt\n");
 }
 
-void traceBack(int tipo)
+void traceBack()
 {
     int tbLin, tbCol, peso, pos, aux, i;
 
-    if (tipo == 1)
-    {
-        printf("\nGeracao do Primeiro Maior Alinhamento Global:\n");
-        tbLin = linPMaior;
-        tbCol = colPMaior;
-    }
-    else
-    {
-        printf("\nGeracao do Ultimo Maior Alinhamento Global:\n");
-        tbLin = linUMaior;
-        tbCol = colUMaior;
-    }
+    printf("\nGeracao do Ultimo Maior Alinhamento Global:\n");
+    tbLin = linUMaior;
+    tbCol = colUMaior;
 
     pos = 0;
     do
@@ -654,9 +674,9 @@ void trataOpcao(int op, int rank, int size)
             }
             else
             {
-                printf("\nDigite o nome do arquivo para a sequencia 1: ");
+                printf("\nDigite o nome do arquivo da maior Sequencia: ");
                 scanf("%s", file1);
-                printf("\nDigite o nome do arquivo para a sequencia 2: ");
+                printf("\nDigite o nome do arquivo da menor Sequencia: ");
                 scanf("%s", file2);
                 leSequenciasArquivo(file1, file2);
             }
@@ -713,10 +733,7 @@ void trataOpcao(int op, int rank, int size)
     case 10:
         if (rank == 0)
         {
-            printf("\nDeseja: <1> Primeiro Maior ou <2> Ultimo Maior? = ");
-            scanf("%d", &resp);
-            scanf("%c", &enter); /* remove o enter */
-            traceBack(resp);
+            traceBack();
 
             // Envia sinal para outros processos
             for (int i = 1; i < size; i++)
@@ -734,6 +751,9 @@ void trataOpcao(int op, int rank, int size)
         if (rank == 0)
             mostraAlinhamentoGlobal();
         break;
+
+    case 12:
+        exit(0);
     }
 }
 
