@@ -42,6 +42,7 @@ int leTamMaior(void)
     do
     {
         printf("\nDigite 0 < valor < %d = ", maxSeq);
+        fflush(stdout);
         scanf("%d", &tamSeqMaior);
     } while ((tamSeqMaior < 1) || (tamSeqMaior > maxSeq));
 }
@@ -52,6 +53,7 @@ int leTamMenor(void)
     do
     {
         printf("\nDigite 0 < valor <= %d = ", tamSeqMaior);
+        fflush(stdout);
         scanf("%d", &tamSeqMenor);
     } while ((tamSeqMenor < 1) || (tamSeqMenor > tamSeqMaior));
 }
@@ -63,6 +65,7 @@ int lePenalidade(void)
     do
     {
         printf("\nDigite valor >= 0 = ");
+        fflush(stdout);
         scanf("%d", &penal);
     } while (penal < 0);
     return penal;
@@ -77,6 +80,7 @@ void leMatrizPesos()
         for (j = 0; j < 4; j++)
         {
             printf("Digite valor %c x %c = ", mapaBases[i], mapaBases[j]);
+            fflush(stdout);
             scanf("%d", &(matrizPesos[i][j]));
         }
         printf("\n");
@@ -104,6 +108,7 @@ int leGrauMutacao(void)
     do
     {
         printf("\nDigite 0 <= valor <= 100 = ");
+        fflush(stdout);
         scanf("%d", &prob);
     } while ((prob < 0) || (prob > 100));
     return prob;
@@ -176,6 +181,7 @@ void leSequenciasTeclado(void)
     do
     {
         printf("\nPara a Sequencia Maior, Digite apenas caracteres 'A', 'T', 'G' e 'C'\n> ");
+        fflush(stdout);
         fgets(seqMaiorAux, maxSeq, stdin);
         tamSeqMaior = strlen(seqMaiorAux) - 1;
     } while (tamSeqMaior < 1);
@@ -205,6 +211,7 @@ void leSequenciasTeclado(void)
     do
     {
         printf("\nPara a Sequencia Menor, Digite apenas caracteres 'A', 'T', 'G' e 'C'\n> ");
+        fflush(stdout);
         fgets(seqMenorAux, maxSeq, stdin);
         tamSeqMenor = strlen(seqMenorAux) - 1;
     } while ((tamSeqMenor < 1) || (tamSeqMenor > tamSeqMaior));
@@ -551,13 +558,11 @@ void mostraSequencias(void)
     for (i = 0; i < tamSeqMaior; i++)
         printf("%c", mapaBases[seqMaior[i]]);
     printf("\n");
-
     for (i = 0; i < tamSeqMaior; i++)
         if (i != indRef)
             printf(" ");
         else
-            printf("^");
-    printf("\nIndice de Referencia = %d\n", indRef);
+            printf(" ");
 
     printf("\nSequencia Menor, Tam = %d\n", tamSeqMenor);
     for (i = 0; i < tamSeqMenor; i++)
@@ -566,10 +571,9 @@ void mostraSequencias(void)
 
     for (i = 0; i < tamSeqMenor; i++)
         if (seqMenor[i] != seqMaior[indRef + i])
-            printf("^");
+            printf(" ");
         else
             printf(" ");
-    printf("\nQuantidade de trocas = %d\n", nTrocas);
 }
 
 void mostraAlinhamentoGlobal(void)
@@ -610,6 +614,7 @@ int menuOpcao(void)
         printf("\n<11> Mostrar Alinhamento Global");
         printf("\n<12> Sair");
         printf("\nDigite a opcao => ");
+        fflush(stdout);
         scanf("%d", &op);
         scanf("%c", &enter); // Remove o enter
     } while ((op < 1) || (op > sair));
@@ -659,6 +664,7 @@ void trataOpcao(int op, int rank, int size)
         if (rank == 0)
         {
             printf("\nDeseja Definicao: <1>MANUAL, <2>ALEATORIA, <3>ARQUIVO? = ");
+            fflush(stdout);
             scanf("%d", &resp);
             scanf("%c", &enter); /* remove o enter */
             if (resp == 1)
@@ -675,8 +681,10 @@ void trataOpcao(int op, int rank, int size)
             else
             {
                 printf("\nDigite o nome do arquivo da maior Sequencia: ");
+                fflush(stdout);
                 scanf("%s", file1);
                 printf("\nDigite o nome do arquivo da menor Sequencia: ");
+                fflush(stdout);
                 scanf("%s", file2);
                 leSequenciasArquivo(file1, file2);
             }
@@ -707,6 +715,7 @@ void trataOpcao(int op, int rank, int size)
         if (rank == 0)
         {
             printf("\nDigite o tamanho do bloco para transmissão MPI: ");
+            fflush(stdout);
             scanf("%d", &blocoTamanho);
 
             // Envia o tamanho do bloco para os outros processos
