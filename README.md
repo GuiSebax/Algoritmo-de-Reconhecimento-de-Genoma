@@ -1,5 +1,4 @@
-# PC
-Programação Concorrente - Análise de Genoma
+# Programação Concorrente - Análise de Genoma
 
 Este trabalho consiste de 2 implementações com base no algoritmo de Needleman-Wunsch para análise de Genôma.
 
