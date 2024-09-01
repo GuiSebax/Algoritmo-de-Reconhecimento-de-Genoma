@@ -2,500 +2,284 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <pthread.h>
+#include <mpi.h>
 
-#define A 0 // A
+#define A 0
 #define T 1
 #define G 2
 #define C 3
-#define sair 14
+#define X 4
 
-#define maxSeq 10000
+#define maxSeq 1000
+#define sair 11
 
-char baseMapa[5] = {'A', 'T', 'G', 'C', '-'};
+char mapaBases[5] = {'A', 'T', 'G', 'C', '-'};
 
-char seqMaior[maxSeq], seqMenor[maxSeq], alinhaMaior[maxSeq][maxSeq], alinhaMenor[maxSeq][maxSeq];
+int seqMaior[maxSeq], seqMenor[maxSeq];
+int alinhaGMaior[maxSeq], alinhaGMenor[maxSeq];
+int matrizEscores[maxSeq + 1][maxSeq + 1];
 
-int matrizScores[maxSeq + 1][maxSeq + 1];
-
-int tamSeqMaior = 6, tamSeqMenor = 6, tamAlinha[maxSeq], penalGap = 0, grauMuta = 0, diagScore, linScore, colScore, k = 1, numThreads = 1;
-
-int maxNumThreads = 1000;
-
+int tamSeqMaior, tamSeqMenor, tamAlinha, penalGap;
+int grauMuta, escoreDiag, escoreLin, escoreCol;
 int matrizPesos[4][4] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 
-int alinhamentoScores[maxSeq];
+int indRef, nTrocas, linPMaior, colPMaior, PMaior;
+int linUMaior, colUMaior, UMaior, blocoTamanho;
 
-typedef struct
-{
-    int tbLin;
-    int tbCol;
-    int pos;
-    int thread_id;
-} traceback_data_t;
-
-typedef struct
-{
-    int thread_id;
-    int num_threads;
-    int lin_start;
-    int lin_end;
-} thread_data_t;
-
-// Declaração de funções
-int leTamMaior(void);
-int leTamMenor(void);
-int lePenalidade(void);
-void leMatrizPesos();
-void mostraMatrizPesos(void);
-int leGrauMutacao(void);
-void leSequenciasDeArquivo();
-void leSequencias();
-void geraSequencias();
-void mostraSequencias(void);
-void mostraAlinhamentoGlobal(void);
-void salvaMatrizScores(void);
-void mostraMatrizScores();
-void *preencheMatrizScores(void *threadarg);
-void geraMatrizScores(void);
-void *traceBackThread(void *threadarg);
-void traceBack(int k);
-int leNumeroDeAlinhamentos(void);
-int leNumeroDeThreads(void);
-int menuOpcao(void);
-void trataOpcao(int op);
-
-// Implementação das funções
-int leTamMaior(void)
-{
+int leTamMaior(void) {
     printf("\nLeitura do Tamanho da Sequencia Maior:");
-    do
-    {
+    do {
         printf("\nDigite 0 < valor < %d = ", maxSeq);
         scanf("%d", &tamSeqMaior);
     } while ((tamSeqMaior < 1) || (tamSeqMaior > maxSeq));
-    return tamSeqMaior;
 }
 
-int leTamMenor(void)
-{
+int leTamMenor(void) {
     printf("\nLeitura do Tamanho da Sequencia Menor:");
-    do
-    {
+    do {
         printf("\nDigite 0 < valor <= %d = ", tamSeqMaior);
         scanf("%d", &tamSeqMenor);
     } while ((tamSeqMenor < 1) || (tamSeqMenor > tamSeqMaior));
-    return tamSeqMenor;
 }
 
-int lePenalidade(void)
-{
+int lePenalidade(void) {
     int penal;
-
     printf("\nLeitura da Penalidade de Gap:");
-    do
-    {
+    do {
         printf("\nDigite valor >= 0 = ");
         scanf("%d", &penal);
     } while (penal < 0);
-
     return penal;
 }
 
-void leMatrizPesos()
-{
+void leMatrizPesos() {
     int i, j;
-
     printf("\nLeitura da Matriz de Pesos:\n");
-    for (i = 0; i < 4; i++)
-    {
-        for (j = 0; j < 4; j++)
-        {
-            printf("Digite valor %c x %c = ", baseMapa[i], baseMapa[j]);
+    for (i = 0; i < 4; i++) {
+        for (j = 0; j < 4; j++) {
+            printf("Digite valor %c x %c = ", mapaBases[i], mapaBases[j]);
             scanf("%d", &(matrizPesos[i][j]));
         }
         printf("\n");
     }
 }
 
-void mostraMatrizPesos(void)
-{
+void mostraMatrizPesos(void) {
     int i, j;
-
     printf("\nMatriz de Pesos Atual:");
     printf("\n%4c%4c%4c%4c%4c\n", ' ', 'A', 'T', 'G', 'C');
-    for (i = 0; i < 4; i++)
-    {
-        printf("%4c", baseMapa[i]);
+    for (i = 0; i < 4; i++) {
+        printf("%4c", mapaBases[i]);
         for (j = 0; j < 4; j++)
             printf("%4d", matrizPesos[i][j]);
         printf("\n");
     }
 }
 
-int leGrauMutacao(void)
-{
+int leGrauMutacao(void) {
     int prob;
-
     printf("\nLeitura da Porcentagem Maxima de Mutacao Aleatoria:\n");
-    do
-    {
+    do {
         printf("\nDigite 0 <= valor <= 100 = ");
         scanf("%d", &prob);
     } while ((prob < 0) || (prob > 100));
-
     return prob;
 }
 
-void leSequenciasDeArquivo()
-{
-    FILE *fileMaior, *fileMenor;
-    char nomeArquivoMaior[100], nomeArquivoMenor[100];
-
-    printf("\nDigite o nome do arquivo para a Sequencia Maior: ");
-    scanf("%s", nomeArquivoMaior);
-    fileMaior = fopen(nomeArquivoMaior, "r");
-    if (fileMaior == NULL)
-    {
-        printf("Erro ao abrir o arquivo %s\n", nomeArquivoMaior);
+void leSequenciasArquivo(char *file1, char *file2) {
+    FILE *fp1 = fopen(file1, "r");
+    FILE *fp2 = fopen(file2, "r");
+    if (fp1 == NULL || fp2 == NULL) {
+        printf("Erro ao abrir os arquivos de sequências.\n");
         exit(1);
     }
 
-    printf("\nDigite o nome do arquivo para a Sequencia Menor: ");
-    scanf("%s", nomeArquivoMenor);
-    fileMenor = fopen(nomeArquivoMenor, "r");
-    if (fileMenor == NULL)
-    {
-        printf("Erro ao abrir o arquivo %s\n", nomeArquivoMenor);
-        exit(1);
-    }
-
-    int oldTamMaior = tamSeqMaior;
-    int oldTamMenor = tamSeqMenor;
-    char oldMaior[maxSeq];
-    char oldMenor[maxSeq];
-    memcpy(oldMaior, seqMaior, maxSeq);
-    memcpy(oldMenor, seqMenor, maxSeq);
-
-    tamSeqMaior = fread(seqMaior, sizeof(char), maxSeq, fileMaior);
-    tamSeqMenor = fread(seqMenor, sizeof(char), maxSeq, fileMenor);
-
-    for (int i = 0; i < tamSeqMaior; i++)
-    {
-        if (seqMaior[i] == 'A')
-        {
-            seqMaior[i] = 0;
-        }
-        else if (seqMaior[i] == 'T')
-        {
-            seqMaior[i] = 1;
-        }
-        else if (seqMaior[i] == 'G')
-        {
-            seqMaior[i] = 2;
-        }
-        else if (seqMaior[i] == 'C')
-        {
-            seqMaior[i] = 3;
-        }
-        else
-        {
-            tamSeqMaior = oldTamMaior;
-            memcpy(seqMaior, oldMaior, maxSeq);
-            printf("Sequencia maior invalida, valor original restaurado.\n");
-        }
-    }
-
-    for (int i = 0; i < tamSeqMenor; i++)
-    {
-        if (seqMenor[i] == 'A')
-        {
-            seqMenor[i] = 0;
-        }
-        else if (seqMenor[i] == 'T')
-        {
-            seqMenor[i] = 1;
-        }
-        else if (seqMenor[i] == 'G')
-        {
-            seqMenor[i] = 2;
-        }
-        else if (seqMenor[i] == 'C')
-        {
-            seqMenor[i] = 3;
-        }
-        else
-        {
-            tamSeqMenor = oldTamMenor;
-            memcpy(seqMenor, oldMenor, maxSeq);
-            printf("Sequencia menor invalida, valor original restaurado. \n");
-        }
-    }
-
-    fclose(fileMaior);
-    fclose(fileMenor);
-
-    if (tamSeqMenor > tamSeqMaior)
-    {
-        printf("Erro: Sequencia menor é maior que a sequencia maior.\n");
-        exit(1);
-    }
-}
-
-void leSequencias()
-{
-    int i, erro, opcao;
-
-    printf("\nSelecione o modo de entrada das sequencias:\n");
-    printf("1. Manual\n");
-    printf("2. Arquivo\n");
-    printf("3. Aleatoria\n");
-    scanf("%d", &opcao);
-
-    if (opcao == 1)
-    {
-        printf("\nLeitura das Sequencias:\n");
-        do
-        {
-            printf("\nPara a Sequencia Maior,");
-            printf("\nDigite apenas caracteres 'A', 'T', 'G' e 'C'");
-            do
-            {
-                printf("\n> ");
-                fgets(seqMaior, maxSeq, stdin);
-                tamSeqMaior = strlen(seqMaior) - 1;
-            } while (tamSeqMaior < 1);
-            printf("\ntamSeqMaior = %d\n", tamSeqMaior);
-            i = 0;
-            erro = 0;
-            do
-            {
-                switch (seqMaior[i])
-                {
-                case 'A':
-                    seqMaior[i] = (char)A;
-                    break;
-                case 'T':
-                    seqMaior[i] = (char)T;
-                    break;
-                case 'G':
-                    seqMaior[i] = (char)G;
-                    break;
-                case 'C':
-                    seqMaior[i] = (char)C;
-                    break;
-                default:
-                    erro = 1;
-                }
-                i++;
-            } while ((erro == 0) && (i < tamSeqMaior));
-        } while (erro == 1);
-
-        do
-        {
-            printf("\nPara a Sequencia Menor, ");
-            printf("\nDigite apenas caracteres 'A', 'T', 'G' e 'C'");
-            do
-            {
-                printf("\n> ");
-                fgets(seqMenor, maxSeq, stdin);
-                tamSeqMenor = strlen(seqMenor) - 1;
-            } while ((tamSeqMenor < 1) || (tamSeqMenor > tamSeqMaior));
-            printf("\ntamSeqMenor = %d\n", tamSeqMenor);
-
-            i = 0;
-            erro = 0;
-            do
-            {
-                switch (seqMenor[i])
-                {
-                case 'A':
-                    seqMenor[i] = (char)A;
-                    break;
-                case 'T':
-                    seqMenor[i] = (char)T;
-                    break;
-                case 'G':
-                    seqMenor[i] = (char)G;
-                    break;
-                case 'C':
-                    seqMenor[i] = (char)C;
-                    break;
-                default:
-                    erro = 1;
-                }
-                i++;
-            } while ((erro == 0) && (i < tamSeqMenor));
-        } while (erro == 1);
-    }
-    else if (opcao == 2)
-    {
-        leSequenciasDeArquivo();
-    }
-    else if (opcao == 3)
-    {
-        leTamMaior();
-        leTamMenor();
-        grauMuta = leGrauMutacao();
-        geraSequencias();
-    }
-    else
-    {
-        printf("Opcao invalida!\n");
-        exit(1);
-    }
-}
-
-void geraSequencias()
-{
-    int i, dif, probAux, ind, nTrocas;
     char base;
+    tamSeqMaior = 0;
+    tamSeqMenor = 0;
 
-    srand(time(NULL));
+    while (fscanf(fp1, "%c", &base) != EOF && tamSeqMaior < maxSeq) {
+        switch (base) {
+            case 'A': seqMaior[tamSeqMaior++] = A; break;
+            case 'T': seqMaior[tamSeqMaior++] = T; break;
+            case 'G': seqMaior[tamSeqMaior++] = G; break;
+            case 'C': seqMaior[tamSeqMaior++] = C; break;
+        }
+    }
+
+    while (fscanf(fp2, "%c", &base) != EOF && tamSeqMenor < maxSeq) {
+        switch (base) {
+            case 'A': seqMenor[tamSeqMenor++] = A; break;
+            case 'T': seqMenor[tamSeqMenor++] = T; break;
+            case 'G': seqMenor[tamSeqMenor++] = G; break;
+            case 'C': seqMenor[tamSeqMenor++] = C; break;
+        }
+    }
+
+    fclose(fp1);
+    fclose(fp2);
+}
+
+void leSequenciasTeclado(void) {
+    int i, erro;
+    char seqMaiorAux[maxSeq], seqMenorAux[maxSeq];
+
+    printf("\nLeitura das Sequencias:\n");
+
+    // Sequência Maior
+    do {
+        printf("\nPara a Sequencia Maior, Digite apenas caracteres 'A', 'T', 'G' e 'C'\n> ");
+        fgets(seqMaiorAux, maxSeq, stdin);
+        tamSeqMaior = strlen(seqMaiorAux) - 1;
+    } while (tamSeqMaior < 1);
+
+    for (i = 0; i < tamSeqMaior; i++) {
+        switch (seqMaiorAux[i]) {
+            case 'A': seqMaior[i] = A; break;
+            case 'T': seqMaior[i] = T; break;
+            case 'G': seqMaior[i] = G; break;
+            case 'C': seqMaior[i] = C; break;
+            default: erro = 1;
+        }
+    }
+
+    // Sequência Menor
+    do {
+        printf("\nPara a Sequencia Menor, Digite apenas caracteres 'A', 'T', 'G' e 'C'\n> ");
+        fgets(seqMenorAux, maxSeq, stdin);
+        tamSeqMenor = strlen(seqMenorAux) - 1;
+    } while ((tamSeqMenor < 1) || (tamSeqMenor > tamSeqMaior));
+
+    for (i = 0; i < tamSeqMenor; i++) {
+        switch (seqMenorAux[i]) {
+            case 'A': seqMenor[i] = A; break;
+            case 'T': seqMenor[i] = T; break;
+            case 'G': seqMenor[i] = G; break;
+            case 'C': seqMenor[i] = C; break;
+            default: erro = 1;
+        }
+    }
+}
+
+void geraSequenciasAleatorias(void) {
+    int i, dif, probAux;
+    char base;
 
     printf("\nGeracao Aleatoria das Sequencias:\n");
 
-    for (i = 0; i < tamSeqMaior; i++)
-    {
-        base = (char)(rand() % 4);
+    // Sequência Maior
+    for (i = 0; i < tamSeqMaior; i++) {
+        base = rand() % 4;
         seqMaior[i] = base;
     }
 
     dif = tamSeqMaior - tamSeqMenor;
-    ind = 0;
+    indRef = 0;
     if (dif > 0)
-        ind = rand() % dif;
+        indRef = rand() % dif;
 
     for (i = 0; i < tamSeqMenor; i++)
-        seqMenor[i] = seqMaior[ind + i];
+        seqMenor[i] = seqMaior[indRef + i];
 
     i = 0;
     nTrocas = 0;
-    while ((i < tamSeqMenor) && (nTrocas < grauMuta))
-    {
-        probAux = rand() % 100;
-
-        if (probAux < grauMuta)
-        {
+    while ((i < tamSeqMenor) && (nTrocas < ((grauMuta * tamSeqMenor) / 100))) {
+        probAux = rand() % 100 + 1;
+        if (probAux <= grauMuta) {
             seqMenor[i] = (seqMenor[i] + (rand() % 3) + 1) % 4;
             nTrocas++;
         }
         i++;
     }
 
-    printf("\nSequencias Geradas, Dif = %d Ind = %d\n", dif, ind);
+    printf("\nSequencias Geradas: Dif = %d, IndRef = %d, NTrocas = %d\n", dif, indRef, nTrocas);
 }
 
-void mostraSequencias(void)
-{
-    int i;
+void geraMatrizEscoresMPI(int rank, int size, int blocoTamanho) {
+    int lin, col, peso, inicio, fim;
+    int numBlocos, blocoAtual, elementosNoBloco;
 
-    printf("\nSequencias Atuais:\n");
-    printf("\nSequencia Maior, Tam = %d\n", tamSeqMaior);
-    printf("%c", baseMapa[(int)seqMaior[0]]);
-    for (i = 1; i < tamSeqMaior; i++)
-        printf("%c", baseMapa[(int)seqMaior[i]]);
-    printf("\n");
+    inicio = (tamSeqMenor * rank) / size + 1;
+    fim = (tamSeqMenor * (rank + 1)) / size;
 
-    printf("\nSequencia Menor, Tam = %d\n", tamSeqMenor);
-    printf("%c", baseMapa[(int)seqMenor[0]]);
-    for (i = 1; i < tamSeqMenor; i++)
-        printf("%c", baseMapa[(int)seqMenor[i]]);
-    printf("\n");
-}
-
-void mostraAlinhamentoGlobal(void)
-{
-    int i, j;
-    int bestThread = 0;
-    int bestScore = alinhamentoScores[0];
-
-    printf("\nAlinhamentos Atuais - Mostrando %d Alinhamentos:\n", k);
-
-    // Mostrar todos os alinhamentos gerados pelas threads
-    for (j = 0; j < k; j++)
-    {
-        printf("\nThread %d -> Alinhamento %d (Score: %d):\n", j + 1, j + 1, alinhamentoScores[j]);
-        printf("%c", baseMapa[(int)alinhaMaior[j][0]]);
-        for (i = 1; i < tamAlinha[j]; i++)
-            printf("%c", baseMapa[(int)alinhaMaior[j][i]]);
-        printf("\n");
-
-        printf("%c", baseMapa[(int)alinhaMenor[j][0]]);
-        for (i = 1; i < tamAlinha[j]; i++)
-            printf("%c", baseMapa[(int)alinhaMenor[j][i]]);
-        printf("\n");
-
-        // Verificar o melhor score
-        if (alinhamentoScores[j] > bestScore)
-        {
-            bestScore = alinhamentoScores[j];
-            bestThread = j;
-        }
-    }
-
-    // Mostrar o melhor alinhamento
-    printf("\nMelhor Alinhamento (Thread %d - Score: %d):\n", bestThread + 1, bestScore);
-    printf("%c", baseMapa[(int)alinhaMaior[bestThread][0]]);
-    for (i = 1; i < tamAlinha[bestThread]; i++)
-        printf("%c", baseMapa[(int)alinhaMaior[bestThread][i]]);
-    printf("\n");
-
-    printf("%c", baseMapa[(int)alinhaMenor[bestThread][0]]);
-    for (i = 1; i < tamAlinha[bestThread]; i++)
-        printf("%c", baseMapa[(int)alinhaMenor[bestThread][i]]);
-    printf("\n");
-}
-
-void salvaMatrizScores(void)
-{
-    FILE *file;
-    char nomeArquivo[100];
-    int i, lin, col;
-
-    printf("\nDigite o nome do arquivo para salvar a Matriz de Scores: ");
-    scanf("%s", nomeArquivo);
-    file = fopen(nomeArquivo, "w");
-    if (file == NULL)
-    {
-        printf("Erro ao abrir o arquivo %s\n", nomeArquivo);
-        exit(1);
-    }
-
-    fprintf(file, "Matriz de Scores:\n");
-    fprintf(file, "%4c%4c", ' ', ' ');
-    for (i = 0; i <= tamSeqMaior; i++)
-        fprintf(file, "%4d", i);
-    fprintf(file, "\n");
-
-    fprintf(file, "%4c%4c%4c", ' ', ' ', '-');
-    for (i = 0; i < tamSeqMaior; i++)
-        fprintf(file, "%4c", baseMapa[(int)(seqMaior[i])]);
-    fprintf(file, "\n");
-
-    fprintf(file, "%4c%4c", '0', '-');
-    for (col = 0; col <= tamSeqMaior; col++)
-        fprintf(file, "%4d", matrizScores[0][col]);
-    fprintf(file, "\n");
-
-    for (lin = 1; lin <= tamSeqMenor; lin++)
-    {
-        fprintf(file, "%4d%4c", lin, baseMapa[(int)(seqMenor[lin - 1])]);
+    if (rank == 0) {
+        // Inicializa linha e coluna de penalidades
         for (col = 0; col <= tamSeqMaior; col++)
-        {
-            fprintf(file, "%4d", matrizScores[lin][col]);
-        }
-        fprintf(file, "\n");
+            matrizEscores[0][col] = -1 * (col * penalGap);
+
+        for (lin = 0; lin <= tamSeqMenor; lin++)
+            matrizEscores[lin][0] = -1 * (lin * penalGap);
     }
 
-    fclose(file);
+    for (lin = inicio; lin <= fim; lin++) {
+        for (col = 1; col <= tamSeqMaior; col++) {
+            peso = matrizPesos[seqMenor[lin - 1]][seqMaior[col - 1]];
+            escoreDiag = matrizEscores[lin - 1][col - 1] + peso;
+            escoreLin = matrizEscores[lin][col - 1] - penalGap;
+            escoreCol = matrizEscores[lin - 1][col] - penalGap;
+
+            if (escoreDiag >= escoreLin && escoreDiag >= escoreCol)
+                matrizEscores[lin][col] = escoreDiag;
+            else if (escoreLin > escoreCol)
+                matrizEscores[lin][col] = escoreLin;
+            else
+                matrizEscores[lin][col] = escoreCol;
+        }
+
+        // Envio da linha em blocos para o processo 0
+        numBlocos = (tamSeqMaior + 1) / blocoTamanho;
+        if ((tamSeqMaior + 1) % blocoTamanho != 0) numBlocos++;
+        
+        for (blocoAtual = 0; blocoAtual < numBlocos; blocoAtual++) {
+            int inicioBloco = blocoAtual * blocoTamanho;
+            elementosNoBloco = blocoTamanho;
+            if (inicioBloco + elementosNoBloco > tamSeqMaior + 1) {
+                elementosNoBloco = tamSeqMaior + 1 - inicioBloco;
+            }
+
+            if (rank != 0) {
+                MPI_Send(&matrizEscores[lin][inicioBloco], elementosNoBloco, MPI_INT, 0, lin, MPI_COMM_WORLD);
+            } else {
+                if (rank != 0) {
+                    MPI_Recv(&matrizEscores[lin][inicioBloco], elementosNoBloco, MPI_INT, rank, lin, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                }
+            }
+        }
+    }
+
+    if (rank == 0) {
+        linPMaior = 1;
+        colPMaior = 1;
+        PMaior = matrizEscores[1][1];
+        linUMaior = 1;
+        colUMaior = 1;
+        UMaior = matrizEscores[1][1];
+
+        for (lin = 1; lin <= tamSeqMenor; lin++) {
+            for (col = 1; col <= tamSeqMaior; col++) {
+                if (PMaior < matrizEscores[lin][col]) {
+                    linPMaior = lin;
+                    colPMaior = col;
+                    PMaior = matrizEscores[lin][col];
+                }
+                if (UMaior <= matrizEscores[lin][col]) {
+                    linUMaior = lin;
+                    colUMaior = col;
+                    UMaior = matrizEscores[lin][col];
+                }
+            }
+        }
+        printf("\nMatriz de escores Gerada.");
+        printf("\nPrimeiro Maior escore = %d na celula [%d,%d]", PMaior, linPMaior, colPMaior);
+        printf("\nUltimo Maior escore = %d na celula [%d,%d]", UMaior, linUMaior, colUMaior);
+    }
 }
 
-void mostraMatrizScores()
-{
+
+void mostraMatrizEscores(void) {
     int i, lin, col;
 
-    printf("\nMatriz de Scores Atual:\n");
+    printf("\nMatriz de escores Atual:\n");
 
     printf("%4c%4c", ' ', ' ');
     for (i = 0; i <= tamSeqMaior; i++)
@@ -504,367 +288,232 @@ void mostraMatrizScores()
 
     printf("%4c%4c%4c", ' ', ' ', '-');
     for (i = 0; i < tamSeqMaior; i++)
-        printf("%4c", baseMapa[(int)(seqMaior[i])]);
+        printf("%4c", mapaBases[seqMaior[i]]);
     printf("\n");
 
     printf("%4c%4c", '0', '-');
     for (col = 0; col <= tamSeqMaior; col++)
-        printf("%4d", matrizScores[0][col]);
+        printf("%4d", matrizEscores[0][col]);
     printf("\n");
 
-    for (lin = 1; lin <= tamSeqMenor; lin++)
-    {
-        printf("%4d%4c", lin, baseMapa[(int)(seqMenor[lin - 1])]);
-        for (col = 0; col <= tamSeqMaior; col++)
-        {
-            printf("%4d", matrizScores[lin][col]);
+    for (lin = 1; lin <= tamSeqMenor; lin++) {
+        printf("%4d%4c", lin, mapaBases[seqMenor[lin - 1]]);
+        for (col = 0; col <= tamSeqMaior; col++) {
+            printf("%4d", matrizEscores[lin][col]);
         }
         printf("\n");
     }
 }
 
-void *preencheMatrizScores(void *threadarg)
-{
-    int lin, col, peso;
-    thread_data_t *data = (thread_data_t *)threadarg;
-    int lin_start = data->lin_start;
-    int lin_end = data->lin_end;
-
-    for (lin = lin_start; lin < lin_end; lin++)
-    {
-        for (col = 1; col <= tamSeqMaior; col++)
-        {
-            peso = matrizPesos[(int)(seqMenor[lin - 1])][(int)(seqMaior[col - 1])];
-            diagScore = matrizScores[lin - 1][col - 1] + peso;
-            linScore = matrizScores[lin][col - 1] - penalGap;
-            colScore = matrizScores[lin - 1][col] - penalGap;
-
-            if ((diagScore >= linScore) && (diagScore >= colScore))
-                matrizScores[lin][col] = diagScore;
-            else if (linScore > colScore)
-                matrizScores[lin][col] = linScore;
-            else
-                matrizScores[lin][col] = colScore;
-        }
+void gravaMatrizEscoresEmArquivo(void) {
+    FILE *fp = fopen("matriz_escores.txt", "w");
+    if (fp == NULL) {
+        printf("Erro ao abrir o arquivo de saída.\n");
+        exit(1);
     }
-    return NULL;
+
+    int lin, col;
+
+    fprintf(fp, "\nMatriz de escores:\n");
+
+    for (lin = 0; lin <= tamSeqMenor; lin++) {
+        for (col = 0; col <= tamSeqMaior; col++) {
+            fprintf(fp, "%4d", matrizEscores[lin][col]);
+        }
+        fprintf(fp, "\n");
+    }
+
+    fclose(fp);
+    printf("Matriz de escores gravada em matriz_escores.txt\n");
 }
 
-void geraMatrizScores(void)
-{
-    int lin, col, linMaior, colMaior, maior;
-    pthread_t threads[numThreads];
-    thread_data_t thread_data[numThreads];
-    int rc;
-    long t;
-    void *status;
+void traceBack(int tipo) {
+    int tbLin, tbCol, peso, pos, aux, i;
 
-    printf("\nGeracao da Matriz de Scores:\n");
-
-    for (col = 0; col <= tamSeqMaior; col++)
-        matrizScores[0][col] = -1 * (col * penalGap);
-
-    for (lin = 0; lin <= tamSeqMenor; lin++)
-        matrizScores[lin][0] = -1 * (lin * penalGap);
-
-    for (t = 0; t < numThreads; t++)
-    {
-        thread_data[t].thread_id = t;
-        thread_data[t].num_threads = numThreads;
-        thread_data[t].lin_start = 1 + t * (tamSeqMenor / numThreads);
-        thread_data[t].lin_end = 1 + (t + 1) * (tamSeqMenor / numThreads);
-        if (thread_data[t].lin_end > tamSeqMenor + 1)
-            thread_data[t].lin_end = tamSeqMenor + 1;
-        rc = pthread_create(&threads[t], NULL, preencheMatrizScores, (void *)&thread_data[t]);
-        if (rc)
-        {
-            printf("ERROR; return code from pthread_create() is %d\n", rc);
-            exit(-1);
-        }
+    if (tipo == 1) {
+        printf("\nGeracao do Primeiro Maior Alinhamento Global:\n");
+        tbLin = linPMaior;
+        tbCol = colPMaior;
+    } else {
+        printf("\nGeracao do Ultimo Maior Alinhamento Global:\n");
+        tbLin = linUMaior;
+        tbCol = colUMaior;
     }
 
-    for (t = 0; t < numThreads; t++)
-    {
-        rc = pthread_join(threads[t], &status);
-        if (rc)
-        {
-            printf("ERROR; return code from pthread_join() is %d\n", rc);
-            exit(-1);
-        }
-    }
+    pos = 0;
+    do {
+        peso = matrizPesos[seqMenor[tbLin - 1]][seqMaior[tbCol - 1]];
+        escoreDiag = matrizEscores[tbLin - 1][tbCol - 1] + peso;
+        escoreLin = matrizEscores[tbLin][tbCol - 1] - penalGap;
+        escoreCol = matrizEscores[tbLin - 1][tbCol] - penalGap;
 
-    linMaior = 1;
-    colMaior = 1;
-    maior = matrizScores[1][1];
-    for (lin = 1; lin <= tamSeqMenor; lin++)
-    {
-        for (col = 1; col <= tamSeqMaior; col++)
-        {
-            if (maior <= matrizScores[lin][col])
-            {
-                linMaior = lin;
-                colMaior = col;
-                maior = matrizScores[lin][col];
+        if ((escoreDiag >= escoreLin) && (escoreDiag >= escoreCol)) {
+            if (seqMenor[tbLin - 1] != seqMaior[tbCol - 1]) {
+                alinhaGMenor[pos] = X;
+                alinhaGMaior[pos] = seqMaior[tbCol - 1];
+                tbCol--;
+                pos++;
+                alinhaGMenor[pos] = seqMenor[tbLin - 1];
+                alinhaGMaior[pos] = X;
+                tbLin--;
+                pos++;
+            } else {
+                alinhaGMenor[pos] = seqMenor[tbLin - 1];
+                tbLin--;
+                alinhaGMaior[pos] = seqMaior[tbCol - 1];
+                tbCol--;
+                pos++;
             }
-        }
-    }
-    printf("\nMatriz de Scores Gerada.");
-    printf("\nUltimo Maior Score = %d na celula [%d,%d]", maior, linMaior, colMaior);
-}
-
-void *traceBackThread(void *threadarg)
-{
-    traceback_data_t *data = (traceback_data_t *)threadarg;
-    int tbLin = data->tbLin;
-    int tbCol = data->tbCol;
-    int pos = data->pos;
-    int thread_id = data->thread_id;
-    int peso;
-    int score = 0;
-
-    while (tbLin > 0 && tbCol > 0)
-    {
-        peso = matrizPesos[(int)(seqMenor[tbLin - 1])][(int)(seqMaior[tbCol - 1])];
-        diagScore = matrizScores[tbLin - 1][tbCol - 1] + peso;
-        linScore = matrizScores[tbLin][tbCol - 1] - penalGap;
-        colScore = matrizScores[tbLin - 1][tbCol] - penalGap;
-
-        if ((diagScore >= linScore) && (diagScore >= colScore))
-        {
-            alinhaMenor[thread_id][pos] = seqMenor[tbLin - 1];
-            alinhaMaior[thread_id][pos] = seqMaior[tbCol - 1];
-            tbLin--;
+        } else if (escoreLin >= escoreCol) {
+            alinhaGMenor[pos] = X;
+            alinhaGMaior[pos] = seqMaior[tbCol - 1];
             tbCol--;
             pos++;
-            score += peso;
-        }
-        else if (linScore > colScore)
-        {
-            alinhaMenor[thread_id][pos] = (char)4;
-            alinhaMaior[thread_id][pos] = seqMaior[tbCol - 1];
-            tbCol--;
-            pos++;
-            score -= penalGap;
-        }
-        else
-        {
-            alinhaMenor[thread_id][pos] = seqMenor[tbLin - 1];
-            alinhaMaior[thread_id][pos] = (char)4;
+        } else {
+            alinhaGMenor[pos] = seqMenor[tbLin - 1];
+            alinhaGMaior[pos] = X;
             tbLin--;
             pos++;
-            score -= penalGap;
         }
-    }
+    } while ((tbLin != 0) && (tbCol != 0));
 
-    while (tbLin > 0)
-    {
-        alinhaMenor[thread_id][pos] = seqMenor[tbLin - 1];
-        alinhaMaior[thread_id][pos] = (char)4;
+    while (tbLin > 0) {
+        alinhaGMenor[pos] = seqMenor[tbLin - 1];
+        alinhaGMaior[pos] = X;
         tbLin--;
         pos++;
-        score -= penalGap;
     }
 
-    while (tbCol > 0)
-    {
-        alinhaMenor[thread_id][pos] = (char)4;
-        alinhaMaior[thread_id][pos] = seqMaior[tbCol - 1];
+    while (tbCol > 0) {
+        alinhaGMenor[pos] = X;
+        alinhaGMaior[pos] = seqMaior[tbCol - 1];
         tbCol--;
         pos++;
-        score -= penalGap;
     }
 
-    tamAlinha[thread_id] = pos;
-    alinhamentoScores[thread_id] = score;
-    return NULL;
-}
+    tamAlinha = pos;
 
-void traceBack(int k)
-{
-    int tbLin = tamSeqMenor;
-    int tbCol = tamSeqMaior;
-    int pos = 0;
-    pthread_t threads[k];
-    traceback_data_t traceback_data[k];
-    int rc;
-    long t;
-    void *status;
+    for (i = 0; i < (tamAlinha / 2); i++) {
+        aux = alinhaGMenor[i];
+        alinhaGMenor[i] = alinhaGMenor[tamAlinha - i - 1];
+        alinhaGMenor[tamAlinha - i - 1] = aux;
 
-    for (t = 0; t < k; t++)
-    {
-        // Alterar o ponto inicial de tbLin e tbCol para gerar alinhamentos diferentes
-        traceback_data[t].tbLin = tbLin - t;
-        traceback_data[t].tbCol = tbCol - t;
-        traceback_data[t].pos = pos;
-        traceback_data[t].thread_id = t;
-        rc = pthread_create(&threads[t], NULL, traceBackThread, (void *)&traceback_data[t]);
-        if (rc)
-        {
-            printf("ERROR; return code from pthread_create() is %d\n", rc);
-            exit(-1);
-        }
-    }
-
-    for (t = 0; t < k; t++)
-    {
-        rc = pthread_join(threads[t], &status);
-        if (rc)
-        {
-            printf("ERROR; return code from pthread_join() is %d\n", rc);
-            exit(-1);
-        }
-    }
-
-    for (int j = 0; j < k; j++)
-    {
-        for (int i = 0; i < tamAlinha[j] / 2; i++)
-        {
-            char aux = alinhaMenor[j][i];
-            alinhaMenor[j][i] = alinhaMenor[j][tamAlinha[j] - i - 1];
-            alinhaMenor[j][tamAlinha[j] - i - 1] = aux;
-
-            aux = alinhaMaior[j][i];
-            alinhaMaior[j][i] = alinhaMaior[j][tamAlinha[j] - i - 1];
-            alinhaMaior[j][tamAlinha[j] - i - 1] = aux;
-        }
+        aux = alinhaGMaior[i];
+        alinhaGMaior[i] = alinhaGMaior[tamAlinha - i - 1];
+        alinhaGMaior[tamAlinha - i - 1] = aux;
     }
 
     printf("\nAlinhamento Global Gerado.");
 }
 
-int leNumeroDeAlinhamentos(void)
-{
-    int k;
-    printf("\nLeitura do Numero de Alinhamentos a Mostrar (k):\n");
-    do
-    {
-        printf("\nDigite valor > 0: ");
-        scanf("%d", &k);
-    } while (k <= 0);
-    return k;
-}
-
-int leNumeroDeThreads(void)
-{
-    int numThreads;
-    printf("\nLeitura do Numero de Threads a Utilizar:\n");
-    do
-    {
-        printf("\nDigite valor > 0 e < %d: ", maxNumThreads);
-        scanf("%d", &numThreads);
-    } while (numThreads <= 0 || numThreads > maxNumThreads);
-    return numThreads;
-}
-
-int menuOpcao(void)
-{
+int menuOpcao(void) {
     int op;
     char enter;
 
-    do
-    {
+    do {
         printf("\nMenu de Opcao:");
-        printf("\n<01> Definir o Numero de Threads");
-        printf("\n<02> Ler Matriz de Pesos");
-        printf("\n<03> Mostrar Matriz de Pesos");
-        printf("\n<04> Ler Penalidade de Gap");
-        printf("\n<05> Mostrar Penalidade");
-        printf("\n<06> Definir Sequencias Genomicas");
-        printf("\n<07> Mostrar Sequencias");
-        printf("\n<08> Gerar Matriz de Scores");
-        printf("\n<09> Mostrar Matriz de Scores");
-        printf("\n<10> Salvar Matriz de Scores");
-        printf("\n<11> Gerar Alinhamento Global");
-        printf("\n<12> Mostrar Alinhamento Global");
-        printf("\n<13> Sair");
+        printf("\n<01> Ler Matriz de Pesos");
+        printf("\n<02> Mostrar Matriz de Pesos");
+        printf("\n<03> Ler Penalidade de Gap");
+        printf("\n<04> Mostrar Penalidade");
+        printf("\n<05> Definir Sequencias Genomicas");
+        printf("\n<06> Mostrar Sequencias");
+        printf("\n<07> Definir Tamanho do Bloco");
+        printf("\n<08> Gerar Matriz de Escores");
+        printf("\n<09> Mostrar Matriz de Escores");
+        printf("\n<10> Gerar Alinhamento Global");
+        printf("\n<11> Mostrar Alinhamento Global");
+        printf("\n<12> Sair");
         printf("\nDigite a opcao => ");
         scanf("%d", &op);
-        scanf("%c", &enter);
-    } while ((op < 1) || (op > 13));
+        scanf("%c", &enter);  // Remove o enter
+    } while ((op < 1) || (op > sair));
 
     return (op);
 }
 
-void trataOpcao(int op)
-{
+void trataOpcao(int op, int rank, int size) {
     int resp;
     char enter;
+    char file1[100], file2[100];
 
-    switch (op)
-    {
-    case 1:
-        numThreads = leNumeroDeThreads();
-        break;
-    case 2:
-        leMatrizPesos();
-        break;
-    case 3:
-        mostraMatrizPesos();
-        break;
-    case 4:
-        penalGap = lePenalidade();
-        break;
-    case 5:
-        printf("\nPenalidade = %d", penalGap);
-        break;
-    case 6:
-        printf("\nDeseja Definicao: <1>MANUAL, <2>ARQUIVO ou <3>ALEATORIA? = ");
-        scanf("%d", &resp);
-        scanf("%c", &enter); /* remove o enter */
-        if (resp == 1)
-        {
-            leSequencias();
-        }
-        else if (resp == 2)
-        {
-            leSequenciasDeArquivo();
-        }
-        else if (resp == 3)
-        {
-            leTamMaior();
-            leTamMenor();
-            grauMuta = leGrauMutacao();
-            geraSequencias();
-        }
-        break;
-    case 7:
-        mostraSequencias();
-        break;
-    case 8:
-        geraMatrizScores();
-        break;
-    case 9:
-        mostraMatrizScores();
-        break;
-
-    case 10:
-        salvaMatrizScores();
-        break;
-
-    case 11:
-        k = leNumeroDeAlinhamentos();
-        traceBack(k);
-        break;
-
-    case 12:
-        mostraAlinhamentoGlobal();
-        break;
-
-    case 13:
-        exit(0);
+    switch (op) {
+        case 1:
+            leMatrizPesos();
+            break;
+        case 2:
+            mostraMatrizPesos();
+            break;
+        case 3:
+            penalGap = lePenalidade();
+            break;
+        case 4:
+            printf("\nPenalidade = %d", penalGap);
+            break;
+        case 5:
+            printf("\nDeseja Definicao: <1>MANUAL, <2>ALEATORIA, <3>ARQUIVO? = ");
+            scanf("%d", &resp);
+            scanf("%c", &enter); /* remove o enter */
+            if (resp == 1) {
+                leSequenciasTeclado();
+            } else if (resp == 2) {
+                leTamMaior();
+                leTamMenor();
+                grauMuta = leGrauMutacao();
+                geraSequenciasAleatorias();
+            } else {
+                printf("\nDigite o nome do arquivo para a sequencia 1: ");
+                scanf("%s", file1);
+                printf("\nDigite o nome do arquivo para a sequencia 2: ");
+                scanf("%s", file2);
+                leSequenciasArquivo(file1, file2);
+            }
+            break;
+        case 6:
+            mostraSequencias();
+            break;
+        case 7:
+            printf("\nDigite o tamanho do bloco para transmissão MPI: ");
+            scanf("%d", &blocoTamanho);
+            break;
+        case 8:
+            geraMatrizEscoresMPI(rank, size, blocoTamanho);
+            if (rank == 0) gravaMatrizEscoresEmArquivo();
+            break;
+        case 9:
+            if (rank == 0) mostraMatrizEscores();
+            break;
+        case 10:
+            if (rank == 0) {
+                printf("\nDeseja: <1> Primeiro Maior ou <2> Ultimo Maior? = ");
+                scanf("%d", &resp);
+                scanf("%c", &enter); /* remove o enter */
+                traceBack(resp);
+            }
+            break;
+        case 11:
+            if (rank == 0) mostraAlinhamentoGlobal();
+            break;
     }
 }
 
-int main(void)
-{
-    int opcao;
+void main(int argc, char *argv[]) {
+    int opcao, rank, size;
 
-    do
-    {
-        printf("\n\nPrograma Needleman-Wunsch Sequencial\n");
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    srand(time(NULL));
+
+    do {
+        if (rank == 0) {
+            printf("\n\nPrograma Needleman-Wunsch com MPI\n");
+        }
         opcao = menuOpcao();
-        trataOpcao(opcao);
-    } while (opcao != 14);
+        MPI_Bcast(&opcao, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        trataOpcao(opcao, rank, size);
+    } while (opcao != sair);
 
-    return 0;
+    MPI_Finalize();
 }
