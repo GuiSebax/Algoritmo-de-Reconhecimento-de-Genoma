@@ -356,14 +356,6 @@ void geraMatrizEscoresMPI(int rank, int np, int blockSize)
                     }
                 }
 
-                // Atualizar o último maior escore localmente
-                if (matrizEscores[lin][col] >= localUMaior)
-                {
-                    localUMaior = matrizEscores[lin][col];
-                    localLinUMaior = lin;
-                    localColUMaior = col;
-                }
-
                 // Envia blocos de dados calculados para o processo 0
                 if (col % blockSize == 0 || col == tamSeqMaior)
                 {
