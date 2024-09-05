@@ -31,7 +31,7 @@ int matrizEscores[maxSeq + 1][maxSeq + 1];
 
 int tamSeqMaior, tamSeqMenor, tamAlinha, penalGap;
 int grauMuta, escoreDiag, escoreLin, escoreCol;
-int matrizPesos[4][4] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+int matrizPesos[4][4] = {2, -1, -1, -1, -1, 2, -1, -1, -1, -1, 2, -1, -1, -1, -1, 2};
 
 int indRef, nTrocas, linPMaior, colPMaior, PMaior;
 int linUMaior, colUMaior, UMaior, blocoTamanho;
@@ -321,12 +321,40 @@ void geraMatrizEscoresMPI(int rank, int np, int blockSize)
         {
             for (col = 1; col <= tamSeqMaior; col++)
             {
+                if (col % blockSize == 1 && lin != 1 && np > 2)
+                {
+                    int bloco = (col + blockSize <= tamSeqMaior) ? blockSize : tamSeqMaior - col + 1;
+                    int proc = (rank == 1) ? np - 1 : rank - 1;
+                    MPI_Recv(&matrizEscores[lin - 1][col], bloco, MPI_INT, proc, 0, MPI_COMM_WORLD, &status);
+                }
+
                 peso = matrizPesos[seqMenor[lin - 1]][seqMaior[col - 1]];
                 int escoreDiag = matrizEscores[lin - 1][col - 1] + peso;
                 int escoreLin = matrizEscores[lin][col - 1] - penalGap;
                 int escoreCol = matrizEscores[lin - 1][col] - penalGap;
 
-                matrizEscores[lin][col] = (escoreDiag > escoreLin) ? (escoreDiag > escoreCol ? escoreDiag : escoreCol) : (escoreLin > escoreCol ? escoreLin : escoreCol);
+                if (escoreDiag > escoreLin)
+                {
+                    if (escoreDiag > escoreCol)
+                    {
+                        matrizEscores[lin][col] = escoreDiag;
+                    }
+                    else
+                    {
+                        matrizEscores[lin][col] = escoreCol;
+                    }
+                }
+                else
+                {
+                    if (escoreLin > escoreCol)
+                    {
+                        matrizEscores[lin][col] = escoreLin;
+                    }
+                    else
+                    {
+                        matrizEscores[lin][col] = escoreCol;
+                    }
+                }
 
                 // Atualizar o último maior escore localmente
                 if (matrizEscores[lin][col] >= localUMaior)
@@ -339,8 +367,21 @@ void geraMatrizEscoresMPI(int rank, int np, int blockSize)
                 // Envia blocos de dados calculados para o processo 0
                 if (col % blockSize == 0 || col == tamSeqMaior)
                 {
-                    int bloco = (col % blockSize == 0) ? blockSize : col % blockSize;
+                    int bloco = (col % blockSize == 0) ? blockSize : (tamSeqMaior - col + blockSize - 1) % blockSize;
+
+                    // Enviar para o processo 0
                     MPI_Send(&matrizEscores[lin][col - bloco + 1], bloco, MPI_INT, 0, 0, MPI_COMM_WORLD);
+
+                    // Enviar para o próximo processo, se ele existir
+                    if (rank < np - 1 && np > 2)
+                    {
+                        MPI_Send(&matrizEscores[lin][col - bloco + 1], bloco, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+                    }
+                    else if (rank == np - 1 && np > 2)
+                    {
+                        // Se o último processo (rank == np - 1), enviar de volta para o processo 1
+                        MPI_Send(&matrizEscores[lin][col - bloco + 1], bloco, MPI_INT, 1, 0, MPI_COMM_WORLD);
+                    }
                 }
             }
         }
@@ -360,46 +401,22 @@ void geraMatrizEscoresMPI(int rank, int np, int blockSize)
                 {
                     int bloco = (b + blockSize <= tamSeqMaior) ? blockSize : tamSeqMaior - b;
                     MPI_Recv(&matrizEscores[lin][b + 1], bloco, MPI_INT, proc, 0, MPI_COMM_WORLD, &status);
-
-                    // Verificar e atualizar o último maior escore global
-                    for (int col = b + 1; col <= b + bloco; col++)
-                    {
-                        if (matrizEscores[lin][col] >= UMaior)
-                        {
-                            UMaior = matrizEscores[lin][col];
-                            linUMaior = lin;
-                            colUMaior = col;
-                        }
-                    }
                 }
             }
         }
-    }
 
-    // Enviar o último maior escore local para o processo 0
-    if (rank > 0)
-    {
-        int localData[3] = {localUMaior, localLinUMaior, localColUMaior};
-        MPI_Send(localData, 3, MPI_INT, 0, 0, MPI_COMM_WORLD);
-    }
-
-    // Processo 0 recebe e compara os valores máximos dos outros processos
-    if (rank == 0)
-    {
-        for (int proc = 1; proc < np; proc++)
+        for (lin = 1; lin <= tamSeqMenor; lin++)
         {
-            int receivedData[3];
-            MPI_Recv(receivedData, 3, MPI_INT, proc, 0, MPI_COMM_WORLD, &status);
-
-            // Atualizar o último maior escore global
-            if (receivedData[0] >= UMaior)
+            for (col = 1; col <= tamSeqMaior; col++)
             {
-                UMaior = receivedData[0];
-                linUMaior = receivedData[1];
-                colUMaior = receivedData[2];
+                if (matrizEscores[lin][col] >= UMaior)
+                {
+                    UMaior = matrizEscores[lin][col];
+                    linUMaior = lin;
+                    colUMaior = col;
+                }
             }
         }
-
         printf("\nMatriz de escores Gerada.");
         printf("\nUltimo Maior escore = %d na celula [%d,%d]", UMaior, linUMaior, colUMaior);
     }
